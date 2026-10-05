@@ -20,7 +20,13 @@ export interface TourRequest {
   /** City ids that must be on the route (agent follow-ups like "keep Austin in"). */
   readonly mustInclude?: readonly string[];
 }
-export interface Stop { readonly city: CandidateCity; readonly affinity: number; readonly affinityRank: number }
+export interface Stop {
+  readonly city: CandidateCity;
+  readonly affinity: number;
+  readonly affinityRank: number;
+  /** Inserted only to split a drive longer than maxLegKm (not a taste pick). */
+  readonly bridge?: boolean;
+}
 export interface Leg { readonly from: string; readonly to: string; readonly km: number }
 export interface TourPlan {
   readonly basis: 'taste' | 'generic';
@@ -109,7 +115,11 @@ function plan(cands: readonly CandidateCity[], req: TourRequest, key: KeyFn, bas
     if (!best || cur.score > best.score) best = cur;
     if (best.viol === 0) break;
   }
-  const order = best ? best.order : [];
+  let order = best ? best.order : [];
+  const bridged = insertBridges(order, cands, req.maxLegKm);
+  order = bridged.order;
+  const bridges = bridged.bridges;
+
   const legs: Leg[] = [];
   for (let i = 1; i < order.length; i++) {
     const km = haversineKm(order[i - 1], order[i]);
@@ -118,7 +128,7 @@ function plan(cands: readonly CandidateCity[], req: TourRequest, key: KeyFn, bas
   }
   return {
     basis,
-    stops: order.map((c) => ({ city: c, affinity: c.affinity, affinityRank: rank.get(c.id)! })),
+    stops: order.map((c) => ({ city: c, affinity: c.affinity, affinityRank: rank.get(c.id)!, ...(bridges.has(c.id) ? { bridge: true } : {}) })),
     legs,
     totalKm: legs.reduce((a, l) => a + l.km, 0),
     warnings,
@@ -152,4 +162,24 @@ function twoOpt(p: CandidateCity[]): CandidateCity[] {
     }
   }
   return best;
+}
+
+/** Split any drive longer than maxLegKm through the unused candidate that makes both halves fit. */
+export function insertBridges(route: readonly CandidateCity[], cands: readonly CandidateCity[], maxLegKm: number) {
+  let order = [...route];
+  const bridges = new Set<string>();
+  for (let i = 1; i < order.length; i++) {
+    const a = order[i - 1];
+    const b = order[i];
+    if (haversineKm(a, b) <= maxLegKm) continue;
+    let pick: CandidateCity | null = null;
+    let worst = Infinity;
+    for (const c of cands) {
+      if (order.includes(c)) continue;
+      const m = Math.max(haversineKm(a, c), haversineKm(c, b));
+      if (m <= maxLegKm && (m < worst || (m === worst && pick && c.id < pick.id))) { pick = c; worst = m; }
+    }
+    if (pick) { order = [...order.slice(0, i), pick, ...order.slice(i)]; bridges.add(pick.id); i++; }
+  }
+  return { order, bridges };
 }

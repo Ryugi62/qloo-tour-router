@@ -80,8 +80,10 @@ async function plan() {
     <div class="kpi"><b>${Math.round((1 - L2.jaccard) * 100)}%</b><span>of cities changed</span></div></div>
     <p class="muted">Taste added: ${esc(L2.added.join(', ') || '—')}<br/>Taste dropped: ${esc(L2.dropped.join(', ') || '—')}</p>
     ${j.taste.warnings.length ? `<p class="muted">⚠ ${esc(j.taste.warnings.join(' · '))}</p>` : `<p class="muted">✓ Every drive ≤ 650 km · ${Math.round(j.taste.totalKm)} km total</p>`}
-    <div>${j.taste.stops.map((s, i) => `<div class="stop"><b>${i + 1}. ${esc(s.city.name)}</b> <span class="muted">affinity ${s.affinity.toFixed(2)} · #${s.affinityRank} of checked markets${s.affinityRank > Math.ceil(j.taste.stops.length * 1.5) ? ' · routing stop (keeps drives short)' : ''}</span>
+    <div>${j.taste.stops.map((s, i) => `<div class="stop"><b>${i + 1}. ${esc(s.city.name)}</b> <span class="muted">affinity ${s.affinity.toFixed(2)} · #${s.affinityRank} of checked markets</span>${s.bridge ? ' <span class="badge">drive-splitting stop</span>' : ''}
       <div class="muted">${esc((s.city.venues || []).filter((v) => v.affinity >= 0.5).slice(0, 2).map((v) => `${v.name} ${v.affinity.toFixed(2)}`).join(' · ') || 'No strong room match yet')}</div>
+      ${(s.city.openers || []).length ? `<div class="muted">Possible openers (fan overlap): ${esc(s.city.openers.slice(0, 2).map((o) => o.name).join(', '))}</div>` : ''}
+      <details style="margin-top:4px"><summary class="muted">Preview promoter email</summary><pre>${esc(j.cityPitches[s.city.id] || '')}</pre></details>
       <div class="row" style="margin-top:6px"><button class="chip" data-copy="${esc(s.city.id)}">Copy promoter email</button><button class="chip" data-drop="${esc(s.city.id)}">Drop city</button><button class="chip" data-keep="${esc(s.city.id)}">${kept.includes(s.city.id) ? 'Kept ✓' : 'Keep'}</button></div></div>`).join('')}</div>
   </div></div><div class="card" style="margin-top:16px"><b>Routing summary</b><pre>${esc(j.pitch)}</pre></div>`;
   window._pitches = j.cityPitches;

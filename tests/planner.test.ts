@@ -16,9 +16,9 @@ const cities: CandidateCity[] = Array.from({ length: 20 }, (_, i) => ({
 const req = { stops: 8, maxLegKm: 650, home: { lat: 34, lon: -118 } };
 
 describe('UC-1 planTour', () => {
-  it('AC-1 eight distinct stops, first stop nearest the home base among chosen', () => {
+  it('AC-1 eight distinct taste stops, first stop nearest the home base among chosen', () => {
     const p = planTour(cities, req);
-    expect(p.stops).toHaveLength(8);
+    expect(p.stops.filter((s) => !s.bridge)).toHaveLength(8);
     expect(new Set(p.stops.map((s) => s.city.id)).size).toBe(8);
     const d0 = haversineKm(req.home, p.stops[0].city);
     for (const s of p.stops) expect(d0).toBeLessThanOrEqual(haversineKm(req.home, s.city) + 1e-9);
@@ -28,7 +28,7 @@ describe('UC-1 planTour', () => {
     for (const leg of p.legs) {
       if (leg.km > req.maxLegKm) expect(p.warnings.some((w) => w.includes(leg.from) && w.includes(leg.to))).toBe(true);
     }
-    expect(p.legs).toHaveLength(7);
+    expect(p.legs).toHaveLength(p.stops.length - 1);
   });
   it('AC-3 deterministic', () => {
     expect(planTour(cities, req)).toEqual(planTour(cities, req));
@@ -112,6 +112,16 @@ describe('feasibility and follow-ups (mock round 1 Q-1/Q-2)', () => {
     const p = planTour([...east, ...west], { stops: 8, maxLegKm: 650, home: { lat: 40.7, lon: -74 } });
     expect(p.warnings).toEqual([]);
     expect(p.legs.every((l) => l.km <= 650)).toBe(true);
+  });
+  it('splits an over-long drive with a bridge stop when one fits', async () => {
+    const { insertBridges } = await import('../src/domain/planner');
+    const a = { id: 'a', name: 'A', lat: 40, lon: -100, affinity: 0.9 };
+    const b = { id: 'b', name: 'B', lat: 40, lon: -88, affinity: 0.9 };
+    const mid = { id: 'mid', name: 'Mid', lat: 40, lon: -94, affinity: 0.1 };
+    const r = insertBridges([a, b], [a, b, mid], 650);
+    expect(r.order.map((c) => c.id)).toEqual(['a', 'mid', 'b']);
+    expect([...r.bridges]).toEqual(['mid']);
+    expect(insertBridges([a, b], [a, b], 650).order).toHaveLength(2);
   });
   it('honours mustInclude (agent follow-up: "keep Austin in")', () => {
     const p = planTour(cities, { ...req, mustInclude: ['c0'] });
