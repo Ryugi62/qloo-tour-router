@@ -10,8 +10,16 @@ export interface CandidateCity extends LatLon {
   /** Optional market size used only by the generic (no-taste) plan. */
   readonly population?: number;
   readonly venues?: readonly Venue[];
+  /** Artists whose fans overlap with this artist's, popular around this city (possible openers). */
+  readonly openers?: readonly { readonly id: string; readonly name: string; readonly affinity: number }[];
 }
-export interface TourRequest { readonly stops: number; readonly maxLegKm: number; readonly home: LatLon }
+export interface TourRequest {
+  readonly stops: number;
+  readonly maxLegKm: number;
+  readonly home: LatLon;
+  /** City ids that must be on the route (agent follow-ups like "keep Austin in"). */
+  readonly mustInclude?: readonly string[];
+}
 export interface Stop { readonly city: CandidateCity; readonly affinity: number; readonly affinityRank: number }
 export interface Leg { readonly from: string; readonly to: string; readonly km: number }
 export interface TourPlan {
@@ -41,34 +49,67 @@ function plan(cands: readonly CandidateCity[], req: TourRequest, key: KeyFn, bas
   const n = Math.min(req.stops, cands.length);
   if (cands.length < req.stops) warnings.push(`only ${cands.length} candidate cities for ${req.stops} stops`);
 
-  // 1) Select greedily: best key minus a distance penalty from the previous pick, preferring reachable cities.
-  // Pool = best 2N by key, so distance can only trade among strong markets (never pick a weak city to save km).
-  const lambda = 0.12 / req.maxLegKm;
-  const pool = [...cands].sort((a, b) => key(b, cands) - key(a, cands) || a.id.localeCompare(b.id)).slice(0, Math.max(n * 2, n));
-  const chosen: CandidateCity[] = [];
-  const left = new Set(pool.map((c) => c.id));
-  let at: LatLon = req.home;
-  for (let i = 0; i < n; i++) {
-    let best: CandidateCity | null = null;
-    let bestScore = -Infinity;
-    let bestReach = false;
-    for (const c of pool) {
-      if (!left.has(c.id)) continue;
-      const km = haversineKm(at, c);
-      const reach = i === 0 || km <= req.maxLegKm;
-      const s = key(c, cands) - lambda * km;
-      if ((reach && !bestReach) || (reach === bestReach && (s > bestScore || (s === bestScore && best && c.id < best.id)))) {
-        best = c; bestScore = s; bestReach = reach;
+  const must = cands.filter((c) => req.mustInclude?.includes(c.id));
+  for (const id of req.mustInclude ?? []) if (!must.some((c) => c.id === id)) warnings.push(`must-include city ${id} is not among candidates`);
+  const ranked = [...cands].sort((a, b) => key(b, cands) - key(a, cands) || a.id.localeCompare(b.id));
+
+  // Objective: leg violations first, then total key (taste or market), then distance.
+  const evalSet = (set: CandidateCity[]) => {
+    const order = twoOpt(nearestNeighbour(set, req.home));
+    let viol = 0;
+    for (let i = 1; i < order.length; i++) if (haversineKm(order[i - 1], order[i]) > req.maxLegKm) viol++;
+    const k = set.reduce((a, c) => a + key(c, cands), 0);
+    const km = pathKm(order);
+    return { order, viol, score: -viol * 100 + k - (0.1 / req.maxLegKm) * km };
+  };
+
+  let best: { order: CandidateCity[]; viol: number; score: number } | null = null;
+  // Pool = strongest markets only (never pick a weak city to save km); widen once if routes stay infeasible.
+  for (const poolSize of [Math.ceil(n * 1.5), n * 2]) {
+    const pool = ranked.slice(0, poolSize);
+    for (const m of must) if (!pool.includes(m)) pool.push(m);
+    // Seeded growth: from every pool city, grow a set by best key near the set (reachable first).
+    const grow = (seed: CandidateCity) => {
+      const set = [...must];
+      if (!set.includes(seed)) set.push(seed);
+      while (set.length < n) {
+        let pick: CandidateCity | null = null;
+        let pickScore = -Infinity;
+        for (const c of pool) {
+          if (set.includes(c)) continue;
+          const near = Math.min(...set.map((x) => haversineKm(x, c)));
+          const s2 = (near <= req.maxLegKm ? 10 : 0) + key(c, cands) - (0.2 / req.maxLegKm) * near;
+          if (s2 > pickScore || (s2 === pickScore && pick && c.id < pick.id)) { pick = c; pickScore = s2; }
+        }
+        if (!pick) break;
+        set.push(pick);
+      }
+      return set.slice(0, Math.max(n, must.length));
+    };
+    let set: CandidateCity[] = [];
+    let cur = { order: [] as CandidateCity[], viol: Infinity, score: -Infinity };
+    for (const seed of pool) {
+      const g = grow(seed);
+      const r = evalSet(g);
+      if (r.score > cur.score + 1e-9) { set = g; cur = r; }
+    }
+    for (let improved = true; improved; ) {
+      improved = false;
+      for (const out of set) {
+        if (must.includes(out)) continue;
+        for (const inn of pool) {
+          if (set.includes(inn)) continue;
+          const trial = set.map((c) => (c === out ? inn : c));
+          const r = evalSet(trial);
+          if (r.score > cur.score + 1e-9) { set = trial; cur = r; improved = true; break; }
+        }
+        if (improved) break;
       }
     }
-    chosen.push(best!);
-    left.delete(best!.id);
-    at = best!;
+    if (!best || cur.score > best.score) best = cur;
+    if (best.viol === 0) break;
   }
-
-  // 2) Order: start nearest home, nearest-neighbour, then 2-opt with a fixed start.
-  let order = nearestNeighbour(chosen, req.home);
-  order = twoOpt(order);
+  const order = best ? best.order : [];
   const legs: Leg[] = [];
   for (let i = 1; i < order.length; i++) {
     const km = haversineKm(order[i - 1], order[i]);

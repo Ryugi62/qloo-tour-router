@@ -11,9 +11,18 @@ describe('application routeTour', () => {
     expect(r.taste.stops.every((s) => (s.city.venues?.length ?? 0) === 3)).toBe(true);
     expect(r.pitch).toContain(r.artist.name);
     expect(r.lift.meanAffinityTaste).toBeGreaterThanOrEqual(r.lift.meanAffinityGeneric);
+    for (const s of r.taste.stops) expect(r.cityPitches[s.city.id]).toContain(s.city.name.split(',')[0]);
+  });
+  it('follow-up constraints: exclude drops a city, mustInclude keeps one', async () => {
+    const base = await routeTour(new SampleTaste(), { artistName: 'folk', home: { lat: 40.7, lon: -74 } });
+    const dropped = base.taste.stops[0].city.id;
+    const r = await routeTour(new SampleTaste(), { artistName: 'folk', home: { lat: 40.7, lon: -74 }, exclude: [dropped], mustInclude: ['atx'] });
+    const ids = r.taste.stops.map((s) => s.city.id);
+    expect(ids).not.toContain(dropped);
+    expect(ids).toContain('atx');
   });
   it('throws ArtistNotFound when search is empty', async () => {
-    const port: TastePort = { mode: 'live', searchArtist: async () => null, rankCities: async () => [], venuesNear: async () => [] };
+    const port: TastePort = { mode: 'live', searchArtist: async () => null, rankCities: async () => [], venuesNear: async () => [], openersNear: async () => [] };
     await expect(routeTour(port, { artistName: 'x', home: { lat: 0, lon: 0 } })).rejects.toBeInstanceOf(ArtistNotFound);
   });
 });

@@ -4,15 +4,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { routeTour, ArtistNotFound, type TastePort } from '../application/routeTour';
-import { SampleTaste, SAMPLE_ARTISTS } from '../adapters/sampleTaste';
-import { QlooHttp } from '../adapters/qlooHttp';
+import { SAMPLE_ARTISTS } from '../adapters/sampleTaste';
+import { portFromEnv } from './portFromEnv';
+export { portFromEnv };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const INDEX = readFileSync(join(here, 'index.html'), 'utf8');
 
-export function portFromEnv(env: NodeJS.ProcessEnv = process.env): TastePort {
-  return env.QLOO_API_KEY ? new QlooHttp(env.QLOO_API_KEY) : new SampleTaste();
-}
 
 export function makeServer(port: TastePort): Server {
   return createServer(async (req, res) => {
@@ -32,12 +30,13 @@ export function makeServer(port: TastePort): Server {
         const artistName = (url.searchParams.get('artist') ?? '').slice(0, 120);
         const [lat, lon] = (url.searchParams.get('home') ?? '40.71,-74.01').split(',').map(Number);
         const stops = Math.max(2, Math.min(12, Number(url.searchParams.get('stops') ?? 8) || 8));
+        const list = (k: string) => (url.searchParams.get(k) ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 12);
         if (!artistName || !Number.isFinite(lat) || !Number.isFinite(lon)) {
           res.writeHead(400, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: 'artist and home=lat,lon are required' }));
           return;
         }
-        const result = await routeTour(port, { artistName, home: { lat, lon }, stops });
+        const result = await routeTour(port, { artistName, home: { lat, lon }, stops, mustInclude: list('must'), exclude: list('exclude') });
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify(result));
         return;

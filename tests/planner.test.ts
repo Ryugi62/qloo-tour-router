@@ -70,6 +70,14 @@ describe('UC-2 compareLift (AC-4)', () => {
   });
 });
 
+describe('venue fit floor', () => {
+  it('does not present a weak venue as a fit', async () => {
+    const { fittingVenue } = await import('../src/domain/pitch');
+    expect(fittingVenue({ ...cities[0], venues: [{ id: 'v', name: 'Weak Room', affinity: 0.31 }] })).toBeNull();
+    expect(fittingVenue({ ...cities[0], venues: [{ id: 'v', name: 'Good Room', affinity: 0.8 }] })?.name).toBe('Good Room');
+  });
+});
+
 describe('UC-3 draftPitch (AC-5)', () => {
   it('names every stop with its rank and makes no ticket-sales claim', () => {
     const plan = planTour(cities, req);
@@ -93,5 +101,23 @@ describe('selection quality', () => {
     const p = planTour(cities, req);
     const top16 = new Set([...cities].sort((a, b) => b.affinity - a.affinity).slice(0, 16).map((c) => c.id));
     for (const s of p.stops) expect(top16.has(s.city.id)).toBe(true);
+  });
+});
+
+describe('feasibility and follow-ups (mock round 1 Q-1/Q-2)', () => {
+  it('produces zero leg violations when a feasible set exists in the strong pool', () => {
+    // Two clusters far apart; the top cities are split, but 8 strong cities exist inside the east cluster.
+    const east = Array.from({ length: 10 }, (_, i) => ({ id: `e${i}`, name: `East ${i}`, lat: 40 + (i % 3), lon: -75 + Math.floor(i / 3), affinity: 0.7 + i * 0.01 }));
+    const west = Array.from({ length: 3 }, (_, i) => ({ id: `w${i}`, name: `West ${i}`, lat: 37, lon: -122 + i, affinity: 0.85 + i * 0.01 }));
+    const p = planTour([...east, ...west], { stops: 8, maxLegKm: 650, home: { lat: 40.7, lon: -74 } });
+    expect(p.warnings).toEqual([]);
+    expect(p.legs.every((l) => l.km <= 650)).toBe(true);
+  });
+  it('honours mustInclude (agent follow-up: "keep Austin in")', () => {
+    const p = planTour(cities, { ...req, mustInclude: ['c0'] });
+    expect(p.stops.map((s) => s.city.id)).toContain('c0');
+  });
+  it('warns when a must-include city is unknown', () => {
+    expect(planTour(cities, { ...req, mustInclude: ['nope'] }).warnings.join(' ')).toMatch(/nope/);
   });
 });

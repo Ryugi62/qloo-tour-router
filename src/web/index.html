@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tour Router</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root { --bg:#fafaf7; --ink:#191f28; --sub:#6b7684; --line:#e5e8eb; --accent:#3182f6; --gen:#b0b8c1; --card:#fff; }
   @media (prefers-color-scheme: dark) { :root { --bg:#17171c; --ink:#f2f4f6; --sub:#9ea7b3; --line:#2c2f36; --card:#202027; --gen:#5c6370; } }
@@ -17,11 +19,14 @@
   .badge { display:inline-block; font-size:13px; padding:2px 10px; border-radius:99px; background:#fff3d6; color:#7a5200; }
   .grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:16px; } @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
   .card { background: var(--card); border:1px solid var(--line); border-radius: 16px; padding: 16px; }
-  svg { width:100%; height:auto; display:block; } .legend { display:flex; gap:16px; font-size:14px; color:var(--sub); }
+  #map { height: 600px; border-radius: 12px; } .legend { display:flex; gap:16px; font-size:14px; color:var(--sub); }
   .kpis { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
   .kpi b { display:block; font-size: 22px; } .kpi span { color: var(--sub); font-size: 13px; }
   ol { padding-left: 20px; margin: 0; } li { margin: 6px 0; } .muted { color: var(--sub); font-size: 14px; }
-  pre { white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: 12px; font-size: 14px; }
+  pre { white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: 12px; font-size: 14px; font-family: inherit; }
+  .stop { border-top:1px solid var(--line); padding:10px 0; } .stop:first-child { border-top:0; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .chip { font-size:13px; padding:4px 10px; border-radius:99px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
+  .why { font-size:14px; color:var(--sub); margin:-8px 0 16px; }
 </style>
 </head>
 <body>
@@ -33,6 +38,7 @@
     <select id="home"><option value="40.71,-74.01">Start: New York</option><option value="34.05,-118.24">Start: Los Angeles</option><option value="41.88,-87.63">Start: Chicago</option><option value="30.27,-97.74">Start: Austin</option></select>
     <button>Plan tour</button>
   </form>
+  <p class="why">Streaming dashboards tell you where people already play the track. Qloo's taste graph tells you where people who share this audience's wider taste — music, film, dining, places — are concentrated, including cities the artist hasn't reached yet.</p>
   <p id="mode"></p>
   <div id="out"></div>
 </main>
@@ -44,32 +50,46 @@ if (meta.dataMode === 'sample') {
   $('#mode').innerHTML = '<span class="badge">Sample data — synthetic affinities, no API key configured</span>';
   $('#artist').value = meta.sampleArtists[0].name;
 }
-function map(taste, generic) {
-  const W = 640, H = 360, all = [...taste.stops, ...generic.stops].map((s) => s.city);
-  const lats = all.map((c) => c.lat), lons = all.map((c) => c.lon);
-  const [a0, a1, o0, o1] = [Math.min(...lats) - 1, Math.max(...lats) + 1, Math.min(...lons) - 2, Math.max(...lons) + 2];
-  const P = (c) => [((c.lon - o0) / (o1 - o0)) * W, H - ((c.lat - a0) / (a1 - a0)) * H];
-  const path = (p) => p.stops.map((s) => P(s.city).join(',')).join(' ');
-  const dots = taste.stops.map((s, i) => { const [x, y] = P(s.city); return `<circle cx="${x}" cy="${y}" r="7" fill="var(--accent)"/><text x="${x + 10}" y="${y + 4}" font-size="13" fill="currentColor">${i + 1}. ${esc(s.city.name.split(',')[0])}</text>`; }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Route map"><polyline points="${path(generic)}" fill="none" stroke="var(--gen)" stroke-width="2" stroke-dasharray="6 6"/><polyline points="${path(taste)}" fill="none" stroke="var(--accent)" stroke-width="3"/>${dots}</svg>
-  <div class="legend"><span>━ Taste-based route</span><span>┅ Generic big-market route</span></div>`;
+let lastQuery = null, excluded = [], kept = [];
+let leaflet = null;
+function drawMap(taste, generic) {
+  if (!window.L) return '<p class="muted">Map unavailable offline.</p>';
+  setTimeout(() => {
+    if (leaflet) leaflet.remove();
+    leaflet = L.map('map', { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(leaflet);
+    const ll = (p) => p.stops.map((s) => [s.city.lat, s.city.lon]);
+    L.polyline(ll(generic), { color: '#8b95a1', dashArray: '6 8', weight: 2 }).addTo(leaflet);
+    generic.stops.forEach((s) => L.circleMarker([s.city.lat, s.city.lon], { radius: 4, color: '#8b95a1' }).bindTooltip(s.city.name.split(',')[0]).addTo(leaflet));
+    const line = L.polyline(ll(taste), { color: '#3182f6', weight: 4 }).addTo(leaflet);
+    taste.stops.forEach((s, i) => L.circleMarker([s.city.lat, s.city.lon], { radius: 8, color: '#3182f6', fillOpacity: 1 }).bindTooltip(`${i + 1}. ${s.city.name.split(',')[0]}`, { permanent: true, direction: 'right' }).addTo(leaflet));
+    leaflet.fitBounds(L.latLngBounds([...ll(taste), ...ll(generic)]).pad(0.15));
+  }, 0);
+  return '<div id="map"></div><div class="legend"><span>━ Taste-based route</span><span>┅ Generic big-market route</span></div>';
 }
-$('#f').addEventListener('submit', async (e) => {
-  e.preventDefault();
+async function plan() {
   $('#out').innerHTML = '<p class="muted">Planning…</p>';
-  const r = await fetch(`/api/plan?artist=${encodeURIComponent($('#artist').value)}&home=${$('#home').value}`);
+  const q = new URLSearchParams({ artist: $('#artist').value, home: $('#home').value, exclude: excluded.join(','), must: kept.join(',') });
+  const r = await fetch(`/api/plan?${q}`);
   const j = await r.json();
   if (!r.ok) { $('#out').innerHTML = `<p>${esc(j.error)}</p>`; return; }
-  const L = j.lift;
-  $('#out').innerHTML = `<div class="grid"><div class="card">${map(j.taste, j.generic)}</div><div class="card">
-    <div class="kpis"><div class="kpi"><b>${(L.meanAffinityTaste).toFixed(2)}</b><span>avg affinity (taste)</span></div>
-    <div class="kpi"><b>${(L.meanAffinityGeneric).toFixed(2)}</b><span>avg affinity (generic)</span></div>
-    <div class="kpi"><b>${Math.round((1 - L.jaccard) * 100)}%</b><span>cities changed</span></div></div>
-    <p class="muted">Added by taste: ${esc(L.added.join(', ') || '—')}<br/>Dropped: ${esc(L.dropped.join(', ') || '—')}</p>
-    <ol>${j.taste.stops.map((s) => `<li><b>${esc(s.city.name)}</b> — affinity ${s.affinity.toFixed(2)} (#${s.affinityRank})<br/><span class="muted">${esc((s.city.venues || []).map((v) => `${v.name} ${v.affinity.toFixed(2)}`).join(' · '))}</span></li>`).join('')}</ol>
-    ${j.taste.warnings.length ? `<p class="muted">⚠ ${esc(j.taste.warnings.join(' · '))}</p>` : ''}
-  </div></div><div class="card" style="margin-top:16px"><b>Promoter pitch draft</b><pre>${esc(j.pitch)}</pre></div>`;
-});
+  const L2 = j.lift;
+  $('#out').innerHTML = `<div class="grid"><div class="card">${drawMap(j.taste, j.generic)}</div><div class="card">
+    <div class="kpis"><div class="kpi"><b>${L2.meanAffinityTaste.toFixed(2)}</b><span>avg audience affinity (taste)</span></div>
+    <div class="kpi"><b>${L2.meanAffinityGeneric.toFixed(2)}</b><span>avg affinity (generic)</span></div>
+    <div class="kpi"><b>${Math.round((1 - L2.jaccard) * 100)}%</b><span>of cities changed</span></div></div>
+    <p class="muted">Taste added: ${esc(L2.added.join(', ') || '—')}<br/>Taste dropped: ${esc(L2.dropped.join(', ') || '—')}</p>
+    ${j.taste.warnings.length ? `<p class="muted">⚠ ${esc(j.taste.warnings.join(' · '))}</p>` : `<p class="muted">✓ Every drive ≤ 650 km · ${Math.round(j.taste.totalKm)} km total</p>`}
+    <div>${j.taste.stops.map((s, i) => `<div class="stop"><b>${i + 1}. ${esc(s.city.name)}</b> <span class="muted">affinity ${s.affinity.toFixed(2)} · #${s.affinityRank} of checked markets${s.affinityRank > Math.ceil(j.taste.stops.length * 1.5) ? ' · routing stop (keeps drives short)' : ''}</span>
+      <div class="muted">${esc((s.city.venues || []).filter((v) => v.affinity >= 0.5).slice(0, 2).map((v) => `${v.name} ${v.affinity.toFixed(2)}`).join(' · ') || 'No strong room match yet')}</div>
+      <div class="row" style="margin-top:6px"><button class="chip" data-copy="${esc(s.city.id)}">Copy promoter email</button><button class="chip" data-drop="${esc(s.city.id)}">Drop city</button><button class="chip" data-keep="${esc(s.city.id)}">${kept.includes(s.city.id) ? 'Kept ✓' : 'Keep'}</button></div></div>`).join('')}</div>
+  </div></div><div class="card" style="margin-top:16px"><b>Routing summary</b><pre>${esc(j.pitch)}</pre></div>`;
+  window._pitches = j.cityPitches;
+  document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => { await navigator.clipboard?.writeText(window._pitches[b.dataset.copy]); b.textContent = 'Copied ✓'; }));
+  document.querySelectorAll('[data-drop]').forEach((b) => b.addEventListener('click', () => { excluded.push(b.dataset.drop); kept = kept.filter((k) => k !== b.dataset.drop); plan(); }));
+  document.querySelectorAll('[data-keep]').forEach((b) => b.addEventListener('click', () => { if (!kept.includes(b.dataset.keep)) kept.push(b.dataset.keep); plan(); }));
+}
+$('#f').addEventListener('submit', (e) => { e.preventDefault(); excluded = []; kept = []; plan(); });
 </script>
 </body>
 </html>

@@ -43,6 +43,13 @@ export class SampleTaste implements TastePort {
       .sort((a, b) => b.affinity - a.affinity)
       .slice(0, take);
   }
+  async openersNear(artist: Artist, city: CandidateCity, take: number) {
+    return Array.from({ length: take }, (_, i) => ({
+      id: `${city.id}-o${i}`,
+      name: `Sample Local Act ${i + 1} (${city.name.split(',')[0]})`,
+      affinity: Math.round((0.3 + 0.7 * hash(artist.id + city.id + 'o' + i)) * 100) / 100,
+    })).sort((a, b) => b.affinity - a.affinity);
+  }
   async venuesNear(artist: Artist, city: CandidateCity, take: number): Promise<Venue[]> {
     return Array.from({ length: take }, (_, i) => ({
       id: `${city.id}-v${i}`,
