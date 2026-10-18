@@ -53,3 +53,48 @@ describe('adapter contract: QlooHttp', () => {
     await expect(q.searchArtist('x')).rejects.toThrow(/401/);
   });
 });
+
+describe('adapter contract: real Qloo response shape', () => {
+  const real = { entity_id: 'P1', name: 'Portland', properties: { geocode: { name: 'Portland', admin1_region: 'Maine', country_code: 'US' } },
+    popularity: 0.83, location: { lat: 43.66, lon: -70.27 }, query: { affinity: 0.93 } };
+  it('disambiguates the city with its region and keeps Qloo popularity as the market proxy', async () => {
+    const q = new QlooHttp('K', async () => ({ ok: true, status: 200, json: async () => ({ results: { entities: [real] } }) }));
+    const [c] = await q.rankCities({ id: 'A', name: 'x' }, 5);
+    expect(c.name).toBe('Portland, Maine');
+    expect(c.popularity).toBe(0.83);
+    expect(c.population).toBeUndefined();
+  });
+  it('generic plan ranks by popularity when no population is returned (not all-zero ties)', async () => {
+    const mk = (id: string, affinity: number, popularity: number, lon: number) => ({ id, name: id, lat: 40, lon, affinity, popularity });
+    const { planGeneric } = await import('../src/domain/planner');
+    const p = planGeneric([mk('a', 0.9, 0.1, -100), mk('b', 0.5, 0.9, -99.9), mk('c', 0.4, 0.5, -99.8)], { stops: 1, maxLegKm: 650, home: { lat: 40, lon: -100 } });
+    expect(p.stops[0].city.id).toBe('b');
+  });
+});
+
+// Real-key contract: runs only when QLOO_API_KEY is set (never in CI/hosting build).
+describe.skipIf(!process.env.QLOO_API_KEY)('LIVE Qloo hackathon API', () => {
+  it('searches an artist and returns real cities with affinity in 0..1 and lat/lon', async () => {
+    const q = new QlooHttp(process.env.QLOO_API_KEY!);
+    const a = await q.searchArtist('Phoebe Bridgers');
+    expect(a?.name).toBe('Phoebe Bridgers');
+    const cities = await q.rankCities(a!, 30);
+    expect(cities.length).toBeGreaterThanOrEqual(20);
+    for (const c of cities) {
+      expect(c.affinity).toBeGreaterThan(0);
+      expect(c.affinity).toBeLessThanOrEqual(1);
+      expect(typeof c.lat).toBe('number');
+    }
+    const v = await q.venuesNear(a!, cities[0], 3);
+    expect(v.length).toBeGreaterThan(0);
+  }, 30000);
+});
+
+describe('venues are music venues, not any place', () => {
+  it('venuesNear asks Qloo for live_music_venue only', async () => {
+    const urls: string[] = [];
+    const q = new QlooHttp('K', async (url) => { urls.push(url); return { ok: true, status: 200, json: async () => ({ results: { entities: [] } }) }; });
+    await q.venuesNear({ id: 'A', name: 'x' }, { id: 'c', name: 'c', lat: 41.3, lon: -72.9, affinity: 0.9 }, 3);
+    expect(decodeURIComponent(urls[0])).toContain('filter.tags=urn:tag:genre:place:live_music_venue');
+  });
+});

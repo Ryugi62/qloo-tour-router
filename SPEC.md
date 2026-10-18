@@ -1,6 +1,6 @@
 # SPEC — Tour Router (working title)
 
-## 0. Purpose
+## 0. Purpose (목적)
 An agentic tool for small booking agencies and artist managers: given an artist, it finds the cities where
 that artist's audience taste is concentrated (Qloo taste graph), picks taste-matched venues, orders the stops
 into a drivable route, and drafts a promoter pitch with the evidence that changed each decision. It shows the
@@ -9,7 +9,7 @@ same request planned **without** taste data next to it, so the user sees what Ql
 Contest: Qloo Agentic Hackathon (Devpost), deadline 2026-10-30 23:45 EDT.
 Agentic surface: an MCP tool `plan_tour` (any agent can call it) + a web app for humans.
 
-## 1. Success conditions (numbers)
+## 1. Success conditions (성공 조건, numbers)
 - S1 A plan for N stops (default 8) where every leg ≤ maxLegKm (default 650 km), or the plan says which leg
   breaks the limit and why.
 - S2 Every stop carries evidence: Qloo affinity (0–1) and its rank among candidates; venues carry their own
@@ -20,7 +20,7 @@ Agentic surface: an MCP tool `plan_tour` (any agent can call it) + a web app for
 - S5 Demo mode works with no key using clearly labelled sample data.
 - S6 Cost 0: no paid LLM is required; pitch text is generated from evidence templates.
 
-## 2. Non-goals
+## 2. Non-goals (비목표)
 - No ticket-sales prediction (affinity ≠ ticket sales; copy must not claim it).
 - No scraping, no personal data, no booking/sending emails on the user's behalf.
 
@@ -64,3 +64,11 @@ Agentic surface: an MCP tool `plan_tour` (any agent can call it) + a web app for
 ## 7. Layers
 `src/domain` (pure: geo, planner, lift, pitch) ← `src/application` (RouteTour + TastePort interface) ←
 `src/adapters` (QlooHttp, SampleTaste) ← `src/web` (HTTP server, static UI, MCP stdio).
+
+## 8. Live key and hosting (v4)
+- S7 With `QLOO_API_KEY` the adapter returns real cities (name carries region, e.g. "Portland, Maine"), affinity in 0..1,
+  and venues filtered to `urn:tag:genre:place:live_music_venue`; `population` is not returned by Qloo, so the
+  generic plan uses Qloo `popularity` as its market proxy (never invented numbers).
+- S8 Hosted URL serves `/` (200) and `/api/plan` with `dataMode: "live"`; the key exists only as a host env var.
+- AC-8 Given real-shaped Qloo JSON, When rankCities runs, Then names are region-labelled and popularity is kept.
+- AC-9 Given a key, When the live contract test runs, Then >=20 cities and >=1 venue come back (skipped without key).

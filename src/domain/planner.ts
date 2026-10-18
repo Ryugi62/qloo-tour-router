@@ -9,6 +9,8 @@ export interface CandidateCity extends LatLon {
   readonly affinity: number;
   /** Optional market size used only by the generic (no-taste) plan. */
   readonly population?: number;
+  /** Qloo entity popularity 0..1; market proxy for the generic plan when population is not returned. */
+  readonly popularity?: number;
   readonly venues?: readonly Venue[];
   /** Artists whose fans overlap with this artist's, popular around this city (possible openers). */
   readonly openers?: readonly { readonly id: string; readonly name: string; readonly affinity: number }[];
@@ -39,8 +41,9 @@ export interface TourPlan {
 type KeyFn = (c: CandidateCity, all: readonly CandidateCity[]) => number;
 const byAffinity: KeyFn = (c) => c.affinity;
 const byMarket: KeyFn = (c, all) => {
-  const max = Math.max(...all.map((x) => x.population ?? 0), 1);
-  return (c.population ?? 0) / max;
+  const size = (x: CandidateCity) => x.population ?? x.popularity ?? 0;
+  const max = Math.max(...all.map(size), Number.EPSILON);
+  return size(c) / max;
 };
 
 export const planTour = (cands: readonly CandidateCity[], req: TourRequest): TourPlan =>
