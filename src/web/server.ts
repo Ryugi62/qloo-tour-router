@@ -44,6 +44,7 @@ export function makeServer(port: TastePort): Server {
       res.writeHead(404).end();
     } catch (e) {
       const notFound = e instanceof ArtistNotFound;
+      if (!notFound) console.error('taste error:', (e as Error).message);
       res.writeHead(notFound ? 404 : 502, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: notFound ? (e as Error).message : 'Taste service unavailable' }));
     }

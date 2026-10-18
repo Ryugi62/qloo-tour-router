@@ -98,3 +98,27 @@ describe('venues are music venues, not any place', () => {
     expect(decodeURIComponent(urls[0])).toContain('filter.tags=urn:tag:genre:place:live_music_venue');
   });
 });
+
+describe('Qloo quota discipline (5 req/s, 10k/month)', () => {
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+  it('retries a 429 after backing off, then succeeds', async () => {
+    let n = 0;
+    const sleeps: number[] = [];
+    const q = new QlooHttp('K', async () => (++n === 1 ? { ok: false, status: 429, json: async () => ({}) } : ok({ results: [{ entity_id: 'A', name: 'x' }] })), { sleep: async (ms) => { sleeps.push(ms); }, minGapMs: 0 });
+    expect((await q.searchArtist('x'))?.id).toBe('A');
+    expect(n).toBe(2);
+    expect(sleeps.some((s) => s >= 500)).toBe(true);
+  });
+  it('gives up after bounded retries instead of looping', async () => {
+    let n = 0;
+    const q = new QlooHttp('K', async () => { n++; return { ok: false, status: 429, json: async () => ({}) }; }, { sleep: async () => {}, minGapMs: 0 });
+    await expect(q.searchArtist('x')).rejects.toThrow(/429/);
+    expect(n).toBeLessThanOrEqual(4);
+  });
+  it('serves a repeated identical request from cache (saves monthly quota)', async () => {
+    let n = 0;
+    const q = new QlooHttp('K', async () => { n++; return ok({ results: [{ entity_id: 'A', name: 'x' }] }); }, { sleep: async () => {}, minGapMs: 0 });
+    await q.searchArtist('x'); await q.searchArtist('x');
+    expect(n).toBe(1);
+  });
+});

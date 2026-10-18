@@ -16,13 +16,37 @@ function cityLabel(e: any): string {
 
 export class QlooHttp implements TastePort {
   readonly mode = 'live' as const;
-  constructor(private readonly apiKey: string, private readonly fetchImpl: FetchLike = fetch as unknown as FetchLike) {}
+  private readonly cache = new Map<string, { at: number; body: any }>();
+  private lastStart = 0;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly minGapMs: number;
+  private readonly ttlMs: number;
+  constructor(
+    private readonly apiKey: string,
+    private readonly fetchImpl: FetchLike = fetch as unknown as FetchLike,
+    opts: { sleep?: (ms: number) => Promise<void>; minGapMs?: number; ttlMs?: number } = {},
+  ) {
+    this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.minGapMs = opts.minGapMs ?? 230; // hackathon key: 5 req/s
+    this.ttlMs = opts.ttlMs ?? 6 * 3600_000; // hackathon key: 10,000 req/month, so identical queries are cached
+  }
 
   private async get(path: string, params: Record<string, string | number>): Promise<any> {
     const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
-    const res = await this.fetchImpl(`${QLOO_BASE}${path}?${qs}`, { headers: { 'X-Api-Key': this.apiKey } });
-    if (!res.ok) throw new Error(`Qloo ${path} → HTTP ${res.status}`);
-    return res.json();
+    const url = `${QLOO_BASE}${path}?${qs}`;
+    const hit = this.cache.get(url);
+    if (hit && Date.now() - hit.at < this.ttlMs) return hit.body;
+    for (let attempt = 0; ; attempt++) {
+      const wait = this.lastStart + this.minGapMs - Date.now();
+      if (wait > 0) await this.sleep(wait);
+      this.lastStart = Date.now();
+      const res = await this.fetchImpl(url, { headers: { 'X-Api-Key': this.apiKey } });
+      if (res.status === 429 && attempt < 3) { await this.sleep(600 * (attempt + 1)); continue; }
+      if (!res.ok) throw new Error(`Qloo ${path} → HTTP ${res.status}`);
+      const body = await res.json();
+      this.cache.set(url, { at: Date.now(), body });
+      return body;
+    }
   }
 
   async searchArtist(name: string): Promise<Artist | null> {
