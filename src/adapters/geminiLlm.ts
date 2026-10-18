@@ -2,28 +2,41 @@
 import type { LlmMessage, LlmPart, LlmPort, ToolSpec } from '../application/agent.js';
 
 export type GeminiFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<any> }>;
-export const GEMINI_MODEL = 'gemini-2.5-flash';
+/** Tried in order. The free tier gives each model its own small daily quota (gemini-2.5-flash: 20 requests/day), so a 429 moves on to the next model. */
+export const GEMINI_MODELS: readonly string[] = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.6-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+const EXHAUSTED_MS = 3600_000;
+const exhaustedUntil = new Map<string, number>();
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+/** Forget which models were out of quota (tests). */
+export const resetExhausted = () => exhaustedUntil.clear();
 export class GeminiLlm implements LlmPort {
   calls = 0;
-  constructor(private readonly apiKey: string, private readonly fetchImpl: GeminiFetch = fetch as unknown as GeminiFetch, private readonly model = GEMINI_MODEL, private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))) {}
+  /** The model that answered the last call. */
+  model = '';
+  constructor(private readonly apiKey: string, private readonly fetchImpl: GeminiFetch = fetch as unknown as GeminiFetch, private readonly models: readonly string[] = GEMINI_MODELS, private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))) {}
 
-  private post(body: unknown) {
+  private post(model: string, body: unknown) {
     this.calls++;
-    return this.fetchImpl(`${BASE}/${this.model}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey }, body: JSON.stringify(body) });
+    return this.fetchImpl(`${BASE}/${model}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey }, body: JSON.stringify(body) });
   }
 
   async generate(system: string, messages: readonly LlmMessage[], tools: readonly ToolSpec[]): Promise<LlmMessage> {
     const contents = messages.map((m) => ({ role: m.role, parts: m.raw ?? m.parts.map(toGemini) }));
-    const body = {
+    const body = (m: string) => ({
       systemInstruction: { parts: [{ text: system }] }, contents,
       tools: [{ functionDeclarations: tools }],
-      generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
-    };
-    let res = await this.post(body);
-    // One retry for a rate limit or a busy model; anything else is an error the caller reports.
-    if (res.status === 429 || res.status === 503) { await this.sleep(2500); res = await this.post(body); }
+      generationConfig: { temperature: 0, ...(m.startsWith('gemini-2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
+    });
+    let res: Awaited<ReturnType<GeminiLlm['post']>> | null = null;
+    for (const m of this.models) {
+      if ((exhaustedUntil.get(m) ?? 0) > Date.now()) continue;
+      let r = await this.post(m, body(m));
+      if (r.status === 503) { await this.sleep(2000); r = await this.post(m, body(m)); }
+      if (r.status === 429) { exhaustedUntil.set(m, Date.now() + EXHAUSTED_MS); res = r; continue; }
+      res = r; this.model = m; break;
+    }
+    if (!res) throw new Error('Gemini → HTTP 429');
     if (!res.ok) throw new Error(`Gemini → HTTP ${res.status}`);
     const j = await res.json();
     const rawParts: any[] = j?.candidates?.[0]?.content?.parts ?? [];

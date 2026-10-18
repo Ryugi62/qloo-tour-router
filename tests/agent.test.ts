@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { chatTurn, resolveCity, hoursToLegKm, type LlmMessage, type LlmPort, type PlanState } from '../src/application/agent';
-import { GeminiLlm, type GeminiFetch } from '../src/adapters/geminiLlm';
+import { GeminiLlm, resetExhausted, type GeminiFetch } from '../src/adapters/geminiLlm';
 import type { CandidateCity, Venue } from '../src/domain/planner';
 import type { TastePort } from '../src/application/routeTour';
 import { LLM_MAX_TOOL_ROUNDS } from '../src/domain/constants';
@@ -90,13 +90,14 @@ describe('S25 planner chat', () => {
 });
 
 describe('adapter contract: GeminiLlm', () => {
+  beforeEach(() => resetExhausted());
   it('sends the key only as x-goog-api-key, declares tools, maps functionCall and text parts', async () => {
     const calls: { url: string; headers: Record<string, string>; body: string }[] = [];
     const fake: GeminiFetch = async (url, init) => {
       calls.push({ url, headers: init.headers, body: init.body });
       return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ functionCall: { name: 'plan_tour', args: { reason: 'r' } } }, { text: 'hi' }] } }] }) };
     };
-    const g = new GeminiLlm('SECRETKEY', fake);
+    const g = new GeminiLlm('SECRETKEY', fake, ['m1']);
     const out = await g.generate('sys', [{ role: 'user', parts: [{ text: 'hello' }] }], [{ name: 'plan_tour', description: 'd', parameters: { type: 'OBJECT' } }]);
     expect(out.parts).toEqual([{ call: { name: 'plan_tour', args: { reason: 'r' } } }, { text: 'hi' }]);
     expect(calls[0].url).toContain('generativelanguage.googleapis.com');
@@ -107,17 +108,20 @@ describe('adapter contract: GeminiLlm', () => {
     expect(g.calls).toBe(1);
   });
   it('surfaces HTTP errors', async () => {
-    const g = new GeminiLlm('K', async () => ({ ok: false, status: 401, json: async () => ({}) }), 'm', async () => {});
+    const g = new GeminiLlm('K', async () => ({ ok: false, status: 401, json: async () => ({}) }), ['m'], async () => {});
     await expect(g.generate('s', [{ role: 'user', parts: [{ text: 'x' }] }], [])).rejects.toThrow(/401/);
     expect(g.calls).toBe(1);
   });
-  it('retries once on 429, then reports it', async () => {
-    let n = 0;
-    const ok = async () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'fine' }] } }] }) });
-    const g = new GeminiLlm('K', async () => (++n === 1 ? { ok: false, status: 429, json: async () => ({}) } : ok()), 'm', async () => {});
+  it('a model out of quota (429) moves on to the next model and is skipped afterwards', async () => {
+    const urls: string[] = [];
+    const g = new GeminiLlm('K', async (url) => { urls.push(url); return url.includes('/a:') ? { ok: false, status: 429, json: async () => ({}) } : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'fine' }] } }] }) }; }, ['a', 'b'], async () => {});
     expect((await g.generate('s', [{ role: 'user', parts: [{ text: 'x' }] }], [])).parts).toEqual([{ text: 'fine' }]);
-    expect(g.calls).toBe(2);
-    const bad = new GeminiLlm('K', async () => ({ ok: false, status: 429, json: async () => ({}) }), 'm', async () => {});
+    expect(g.model).toBe('b');
+    await g.generate('s', [{ role: 'user', parts: [{ text: 'x' }] }], []);
+    expect(urls.filter((u) => u.includes('/a:'))).toHaveLength(1);
+  });
+  it('reports 429 when every model is out of quota', async () => {
+    const bad = new GeminiLlm('K', async () => ({ ok: false, status: 429, json: async () => ({}) }), ['m'], async () => {});
     await expect(bad.generate('s', [{ role: 'user', parts: [{ text: 'x' }] }], [])).rejects.toThrow(/429/);
   });
 });
