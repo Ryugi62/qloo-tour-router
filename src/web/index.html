@@ -34,7 +34,7 @@
   <h1>Tour Router</h1>
   <p class="sub">For small booking agencies: route an artist where their audience's taste actually is — and see what changed versus a generic big-market plan.</p>
   <form id="f">
-    <input id="artist" placeholder="Artist name" required />
+    <input id="artist" placeholder="Artist name, e.g. Phoebe Bridgers" required />
     <select id="home"><option value="40.71,-74.01">Start: New York</option><option value="34.05,-118.24">Start: Los Angeles</option><option value="41.88,-87.63">Start: Chicago</option><option value="30.27,-97.74">Start: Austin</option></select>
     <button>Plan tour</button>
   </form>
@@ -49,6 +49,10 @@ const meta = await (await fetch('/api/meta')).json();
 if (meta.dataMode === 'sample') {
   $('#mode').innerHTML = '<span class="badge">Sample data — synthetic affinities, no API key configured</span>';
   $('#artist').value = meta.sampleArtists[0].name;
+} else {
+  $('#mode').innerHTML = '<span class="badge">Live Qloo taste data</span>';
+  const qa = new URLSearchParams(location.search).get('artist');
+  if (qa) $('#artist').value = qa;
 }
 let lastQuery = null, excluded = [], kept = [];
 let leaflet = null;
@@ -92,6 +96,7 @@ async function plan() {
   document.querySelectorAll('[data-keep]').forEach((b) => b.addEventListener('click', () => { if (!kept.includes(b.dataset.keep)) kept.push(b.dataset.keep); plan(); }));
 }
 $('#f').addEventListener('submit', (e) => { e.preventDefault(); excluded = []; kept = []; plan(); });
+if (meta.dataMode === 'live' && $('#artist').value) plan(); // shareable link: ?artist=Name
 </script>
 </body>
 </html>

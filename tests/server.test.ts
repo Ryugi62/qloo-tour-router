@@ -29,3 +29,11 @@ describe('web adapter', () => {
     expect((await fetch(`${base}/api/plan?artist=`)).status).toBe(400);
   });
 });
+
+describe('live-mode page', () => {
+  it('labels live data and supports a shareable ?artist= link', async () => {
+    const html = await (await fetch(`${base}/`)).text();
+    expect(html).toContain('Live Qloo taste data');
+    expect(html).toContain("get('artist')");
+  });
+});
