@@ -57,6 +57,14 @@ export class QlooHttp implements TastePort {
     return e ? { id: e.entity_id, name: e.name, ...(typeof e.popularity === 'number' ? { popularity: e.popularity } : {}) } : null;
   }
 
+  /** Resolve a city name typed by the user ("Montreal") to a Qloo destination with coordinates. */
+  async searchCity(name: string): Promise<CandidateCity | null> {
+    const j = await this.get('/search', { query: name, types: 'urn:entity:destination', take: 1 });
+    const e = j?.results?.[0];
+    if (!e || typeof e?.location?.lat !== 'number' || typeof e?.location?.lon !== 'number') return null;
+    return { id: e.entity_id, name: cityLabel(e), lat: e.location.lat, lon: e.location.lon, affinity: 0, ...(typeof e?.popularity === 'number' ? { popularity: e.popularity } : {}) };
+  }
+
   async rankCities(artist: Artist, take: number): Promise<CandidateCity[]> {
     const j = await this.get('/v2/insights', {
       'filter.type': 'urn:entity:destination',
@@ -100,6 +108,10 @@ export class QlooHttp implements TastePort {
       affinity: typeof e?.query?.affinity === 'number' ? e.query.affinity : 0,
       popularity: typeof e?.popularity === 'number' ? e.popularity : undefined,
       tags: Array.isArray(e?.tags) ? e.tags.map((t: any) => String(t?.id ?? '')).filter(Boolean) : [],
+      // The room's own location (SPEC S22): the stop is where the room is, not where the search was centred.
+      ...(typeof e?.location?.lat === 'number' && typeof e?.location?.lon === 'number' ? { lat: e.location.lat, lon: e.location.lon } : {}),
+      ...(typeof e?.properties?.geocode?.city === 'string' && e.properties.geocode.city ? { city: e.properties.geocode.city } : {}),
+      ...(typeof e?.properties?.geocode?.admin1_region === 'string' && e.properties.geocode.admin1_region ? { region: e.properties.geocode.admin1_region } : {}),
     }));
   }
 

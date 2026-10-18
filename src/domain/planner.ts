@@ -1,9 +1,13 @@
 // UC-1: choose and order tour stops. Pure and deterministic.
 import { haversineKm, type LatLon } from './geo.js';
 import { MIN_CITY_SEPARATION_KM } from './constants.js';
+import { bestOrder, driveHours, greedyOrder, pathKm } from './route.js';
 
 export type VenueKind = 'venue' | 'unverified';
 export type VenueSize = 'established' | 'smaller' | 'unknown';
+/** Estimated room class from Qloo tags/popularity (never a capacity). */
+export type VenueTier = 'small' | 'mid' | 'large' | 'unknown';
+export type SizeFit = 'match' | 'too-small' | 'too-big' | 'unknown';
 export interface Venue {
   readonly id: string;
   readonly name: string;
@@ -15,6 +19,15 @@ export interface Venue {
   /** Set by the application after classification (domain/venue.ts). */
   readonly kind?: VenueKind;
   readonly size?: VenueSize;
+  /** The room's own location from the Qloo response (SPEC S22). */
+  readonly lat?: number;
+  readonly lon?: number;
+  readonly city?: string;
+  readonly region?: string;
+  /** Weight class estimate vs the artist (SPEC S23). */
+  readonly tier?: VenueTier;
+  readonly sizeBasis?: 'tags' | 'popularity' | 'none';
+  readonly fit?: SizeFit;
 }
 export interface CandidateCity extends LatLon {
   readonly id: string;
@@ -30,6 +43,8 @@ export interface CandidateCity extends LatLon {
   readonly openers?: readonly Opener[];
   /** Qloo's own destination tags (e.g. "Foodie Destination"), shown as city character. */
   readonly tags?: readonly string[];
+  /** Set when the stop was moved to its room's own city (SPEC S22): the candidate city Qloo ranked. */
+  readonly relocatedFrom?: string;
 }
 export interface Opener {
   readonly id: string;
@@ -63,8 +78,19 @@ export interface TourPlan {
   readonly basis: 'taste' | 'generic';
   readonly stops: readonly Stop[];
   readonly legs: readonly Leg[];
+  /** Stop-to-stop km (the start leg is in `stats`). */
   readonly totalKm: number;
   readonly warnings: readonly string[];
+  readonly stats: RouteStats;
+}
+/** Drive numbers (SPEC S24). Hours are an estimate: km × road factor ÷ average speed. */
+export interface RouteStats {
+  readonly totalKm: number;
+  readonly homeLegKm: number;
+  readonly driveHours: number;
+  readonly longestLegKm: number;
+  /** Km saved against nearest-neighbour + 2-opt for the same stops (>= 0). */
+  readonly orderGainKm: number;
 }
 
 type KeyFn = (c: CandidateCity, all: readonly CandidateCity[]) => number;
@@ -105,7 +131,7 @@ function plan(allCands: readonly CandidateCity[], req: TourRequest, key: KeyFn, 
 
   // Objective: leg violations first, then total key (taste or market), then distance.
   const evalSet = (set: CandidateCity[]) => {
-    const order = twoOpt(nearestNeighbour(set, req.home));
+    const order = greedyOrder(set, req.home);
     let viol = 0;
     for (let i = 1; i < order.length; i++) if (haversineKm(order[i - 1], order[i]) > req.maxLegKm) viol++;
     const k = set.reduce((a, c) => a + key(c, cands), 0);
@@ -159,53 +185,33 @@ function plan(allCands: readonly CandidateCity[], req: TourRequest, key: KeyFn, 
     if (!best || cur.score > best.score) best = cur;
     if (best.viol === 0) break;
   }
-  let order = best ? best.order : [];
-  const bridged = insertBridges(order, cands, req.maxLegKm, sep);
-  order = bridged.order;
-  const bridges = bridged.bridges;
+  const core = best ? best.order : [];
+  const tourKm = (p: readonly CandidateCity[]) => (p.length ? haversineKm(req.home, p[0]) + pathKm(p) : 0);
+  const exact = bestOrder(core, req.home, req.maxLegKm);
+  const orderGainKm = Math.max(0, tourKm(core) - tourKm(exact));
+  const bridged = insertBridges(exact, cands, req.maxLegKm, sep);
+  return assemblePlan(bridged.order, bridged.bridges, rank, req, basis, warnings, orderGainKm);
+}
 
+/** Legs, totals, drive stats and leg warnings for an ordered list of stops (also used after a stop is re-anchored). */
+export function assemblePlan(order: readonly CandidateCity[], bridges: ReadonlySet<string>, rank: ReadonlyMap<string, number>, req: Pick<TourRequest, 'maxLegKm' | 'home'>, basis: TourPlan['basis'], warnings: readonly string[], orderGainKm = 0): TourPlan {
+  const w = [...warnings];
   const legs: Leg[] = [];
   for (let i = 1; i < order.length; i++) {
     const km = haversineKm(order[i - 1], order[i]);
     legs.push({ from: order[i - 1].name, to: order[i].name, km });
-    if (km > req.maxLegKm) warnings.push(`leg ${order[i - 1].name} → ${order[i].name} is ${Math.round(km)} km (> ${req.maxLegKm})`);
+    if (km > req.maxLegKm) w.push(`leg ${order[i - 1].name} → ${order[i].name} is ${Math.round(km)} km (> ${req.maxLegKm})`);
   }
+  const totalKm = legs.reduce((a, l) => a + l.km, 0);
+  const homeLegKm = order.length ? haversineKm(req.home, order[0]) : 0;
   return {
     basis,
-    stops: order.map((c) => ({ city: c, affinity: c.affinity, affinityRank: rank.get(c.id)!, ...(bridges.has(c.id) ? { bridge: true } : {}) })),
+    stops: order.map((c) => ({ city: c, affinity: c.affinity, affinityRank: rank.get(c.id) ?? 0, ...(bridges.has(c.id) ? { bridge: true } : {}) })),
     legs,
-    totalKm: legs.reduce((a, l) => a + l.km, 0),
-    warnings,
+    totalKm,
+    warnings: w,
+    stats: { totalKm, homeLegKm, driveHours: driveHours(totalKm + homeLegKm), longestLegKm: Math.max(0, ...legs.map((l) => l.km)), orderGainKm },
   };
-}
-
-function nearestNeighbour(cs: CandidateCity[], home: LatLon): CandidateCity[] {
-  if (cs.length === 0) return [];
-  const rest = [...cs].sort((a, b) => haversineKm(home, a) - haversineKm(home, b) || a.id.localeCompare(b.id));
-  const out = [rest.shift()!];
-  while (rest.length) {
-    const last = out[out.length - 1];
-    rest.sort((a, b) => haversineKm(last, a) - haversineKm(last, b) || a.id.localeCompare(b.id));
-    out.push(rest.shift()!);
-  }
-  return out;
-}
-
-const pathKm = (p: CandidateCity[]) => p.slice(1).reduce((a, c, i) => a + haversineKm(p[i], c), 0);
-
-function twoOpt(p: CandidateCity[]): CandidateCity[] {
-  let best = p;
-  let improved = true;
-  while (improved) {
-    improved = false;
-    for (let i = 1; i < best.length - 1; i++) {
-      for (let k = i + 1; k < best.length; k++) {
-        const cand = [...best.slice(0, i), ...best.slice(i, k + 1).reverse(), ...best.slice(k + 1)];
-        if (pathKm(cand) + 1e-9 < pathKm(best)) { best = cand; improved = true; }
-      }
-    }
-  }
-  return best;
 }
 
 /** Split any drive longer than maxLegKm through the unused candidate that makes both halves fit. */

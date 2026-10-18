@@ -39,10 +39,14 @@ export function makeMcp(port: TastePort): McpServer {
         route: r.taste.stops.map((s) => ({
           id: s.city.id, city: s.city.name, affinity: s.affinity, rank: s.affinityRank,
           why: r.stopNotes[s.city.id]?.summary, rankNote: r.stopNotes[s.city.id]?.rankNote ?? null,
-          venues: (s.city.venues ?? []).map((v) => ({ name: v.name, affinity: v.affinity, kind: v.kind, size: v.size })),
+          venues: (s.city.venues ?? []).map((v) => ({ name: v.name, affinity: v.affinity, kind: v.kind, size: v.size, sizeEstimate: v.tier, fitForArtist: v.fit, city: v.city })),
+          movedFrom: s.city.relocatedFrom ?? null,
           openers: (s.city.openers ?? []).map((o) => ({ name: o.name, scope: o.scope, popularity: o.popularity ?? null })),
         })),
         totalKm: Math.round(r.taste.totalKm),
+        routeStats: { ...r.taste.stats, driveHours: Math.round(r.taste.stats.driveHours * 10) / 10 },
+        marketBaseline: { stops: r.generic.stops.map((s) => ({ city: s.city.name, pop: s.city.population })), omittedFromTasteRoute: r.baselineOmissions },
+        stopMarkets: r.stopMarkets,
         warnings: r.taste.warnings,
         unfilled: r.unfilled,
         degraded: r.degraded,
@@ -65,7 +69,7 @@ export function makeMcp(port: TastePort): McpServer {
       const r = await run(port, a);
       const stop = r.taste.stops.find((s) => s.city.id === a.city_id);
       const key = stop?.city.name ?? '';
-      const trace = r.trace.filter((t) => t.city === key || (!stop && t.city.startsWith(a.city_id)));
+      const trace = r.trace.filter((t) => t.cityId === a.city_id || t.city === key || (!stop && t.city.startsWith(a.city_id)));
       const droppedName = r.trace.find((t) => /drop/i.test(t.action) && t.city.split(',')[0] === a.city_id)?.city;
       const note = stop ? r.stopNotes[stop.city.id] : null;
       return reply({

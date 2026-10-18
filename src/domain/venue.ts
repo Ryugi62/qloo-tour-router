@@ -6,6 +6,7 @@ import type { Venue, VenueKind, VenueSize } from './planner.js';
 const PLACE_ROOM = ['concert_hall', 'amphitheater', 'night_club', 'performing_arts_theater', 'auditorium'];
 const SETTING_ROOM = ['music_venue', 'basement_venue', 'megaclub', 'nightclub', 'music_hall', 'open_air_venue'];
 const HARD_NOT_ROOM = ['music_school', 'school', 'cafe', 'coffee_shop', 'bakery', 'drive_in_theater', 'restaurant'];
+const GALLERY = ['art_gallery', 'arts_center', 'art_center', 'museum', 'cultural_center', 'gallery'];
 const SOFT_NOT_ROOM = ['wedding_venue', 'banquet_hall', 'comedy_club', 'art_studio', 'pizza_takeout'];
 
 const placeTypes = (ids: readonly string[]) => new Set(ids.filter((t) => t.includes(':place:')).flatMap((t) => t.split(':place:')[1].split(':')));
@@ -18,6 +19,7 @@ export function classifyVenue(tagIds: readonly string[], popularity?: number): {
   const setting = settings(tagIds);
   if (place.has('music_school') || place.has('school')) return { kind: 'excluded', size, reason: 'school' };
   if (any(place, PLACE_ROOM)) return { kind: 'venue', size, reason: 'concert-room place type' };
+  if (any(place, GALLERY) && !any(setting, SETTING_ROOM)) return { kind: 'excluded', size, reason: 'gallery or art center without a concert-room tag' };
   if (any(place, HARD_NOT_ROOM)) return { kind: 'excluded', size, reason: 'restaurant, cafe or similar' };
   if (any(setting, SETTING_ROOM)) return any(place, SOFT_NOT_ROOM) ? { kind: 'excluded', size, reason: 'event or banquet place' } : { kind: 'venue', size, reason: 'music-venue setting' };
   if (any(place, SOFT_NOT_ROOM)) return { kind: 'excluded', size, reason: 'event or banquet place' };

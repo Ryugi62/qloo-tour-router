@@ -18,3 +18,24 @@ export const OPENER_POPULARITY_MARGIN = 0.05;
 export const LOCAL_SIGNAL_MIN_DELTA = 0.02;
 /** Openers requested per city (the popularity band filters most of them). */
 export const OPENER_FETCH = 20;
+// Data and structure (SPEC §12).
+/** A metro with at least this many people is a "big market". */
+export const BIG_MARKET_POP = 1_000_000;
+/** The market-size baseline considers US metros within this distance of the start. */
+export const MARKET_REGION_KM = 900;
+/** Two stops this close are the same market when plans are compared. */
+export const LIFT_MATCH_KM = 100;
+/** A town not named in any metro is assigned to the nearest metro only within this distance. */
+export const MARKET_NEAR_KM = 60;
+/** A room this far from the candidate city, in another city, moves the stop to the room's own city. */
+export const VENUE_RELOCATE_MIN_KM = 8;
+/** Drive time estimate: straight-line km × ROAD_FACTOR ÷ AVG_SPEED_KMH. */
+export const ROAD_FACTOR = 1.25;
+export const AVG_SPEED_KMH = 80;
+/** Artist weight class from Qloo artist popularity: below MID = emerging, below HEADLINE = mid, else headline. */
+export const ARTIST_BAND_MID = 0.9;
+export const ARTIST_BAND_HEADLINE = 0.97;
+export const LLM_MAX_TOOL_ROUNDS = 4;
+/** Chat calls per server instance per hour (protects the Gemini quota). */
+export const LLM_HOURLY_CAP = 40;
+export const ROOM_CLUSTER_KM = 30;
