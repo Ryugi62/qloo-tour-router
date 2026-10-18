@@ -3,9 +3,9 @@ import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { routeTour, ArtistNotFound, type TastePort } from '../application/routeTour';
-import { SAMPLE_ARTISTS } from '../adapters/sampleTaste';
-import { portFromEnv } from './portFromEnv';
+import { routeTour, ArtistNotFound, type TastePort } from '../application/routeTour.js';
+import { SAMPLE_ARTISTS } from '../adapters/sampleTaste.js';
+import { portFromEnv } from './portFromEnv.js';
 export { portFromEnv };
 
 const here = dirname(fileURLToPath(import.meta.url));

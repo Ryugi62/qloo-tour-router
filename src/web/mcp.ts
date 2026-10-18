@@ -2,8 +2,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { routeTour, type TastePort } from '../application/routeTour';
-import { portFromEnv } from './portFromEnv';
+import { routeTour, type TastePort } from '../application/routeTour.js';
+import { portFromEnv } from './portFromEnv.js';
 
 export function makeMcp(port: TastePort): McpServer {
   const mcp = new McpServer({ name: 'tour-router', version: '0.2.0' });

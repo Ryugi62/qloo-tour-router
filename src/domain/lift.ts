@@ -1,5 +1,5 @@
 // UC-2: what taste data changed versus the generic plan.
-import type { TourPlan } from './planner';
+import type { TourPlan } from './planner.js';
 
 export interface TasteLift {
   readonly jaccard: number;

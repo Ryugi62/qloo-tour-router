@@ -1,5 +1,5 @@
 // UC-3: pitch drafted only from evidence in the plan (no invented numbers, no sales claims).
-import type { CandidateCity, TourPlan, Venue } from './planner';
+import type { CandidateCity, TourPlan, Venue } from './planner.js';
 
 export interface Artist { readonly id: string; readonly name: string }
 /** Venues below this affinity are not presented as a fit (mock round 1: 0.31 was called "fits"). */

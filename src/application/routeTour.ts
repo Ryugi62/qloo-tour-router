@@ -1,8 +1,8 @@
 // Application: UC-1..UC-3 orchestrated over a TastePort. No HTTP/framework imports.
-import type { LatLon } from '../domain/geo';
-import { compareLift, type TasteLift } from '../domain/lift';
-import { draftCityPitch, draftPitch, type Artist } from '../domain/pitch';
-import { planGeneric, planTour, type CandidateCity, type TourPlan, type Venue } from '../domain/planner';
+import type { LatLon } from '../domain/geo.js';
+import { compareLift, type TasteLift } from '../domain/lift.js';
+import { draftCityPitch, draftPitch, type Artist } from '../domain/pitch.js';
+import { planGeneric, planTour, type CandidateCity, type TourPlan, type Venue } from '../domain/planner.js';
 
 export interface TastePort {
   readonly mode: 'live' | 'sample';

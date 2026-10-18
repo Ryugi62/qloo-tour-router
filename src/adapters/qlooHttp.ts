@@ -1,9 +1,9 @@
 // Adapter: Qloo hackathon API (https://hackathon.api.qloo.com). Key stays server-side (X-Api-Key header).
 // Endpoint/parameter names follow docs.qloo.com hackathon guide; exact location filters are verified once a
 // key is issued (see SPEC §1 S2 — nothing is invented when the API returns no data).
-import type { TastePort } from '../application/routeTour';
-import type { Artist } from '../domain/pitch';
-import type { CandidateCity, Venue } from '../domain/planner';
+import type { TastePort } from '../application/routeTour.js';
+import type { Artist } from '../domain/pitch.js';
+import type { CandidateCity, Venue } from '../domain/planner.js';
 
 export type FetchLike = (url: string, init: { headers: Record<string, string> }) => Promise<{ ok: boolean; status: number; json(): Promise<any> }>;
 export const QLOO_BASE = 'https://hackathon.api.qloo.com';

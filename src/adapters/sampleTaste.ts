@@ -1,7 +1,7 @@
 // Adapter: SAMPLE data for demo mode (no API key). Affinities are synthetic and labelled as such in the UI.
-import type { TastePort } from '../application/routeTour';
-import type { Artist } from '../domain/pitch';
-import type { CandidateCity, Venue } from '../domain/planner';
+import type { TastePort } from '../application/routeTour.js';
+import type { Artist } from '../domain/pitch.js';
+import type { CandidateCity, Venue } from '../domain/planner.js';
 
 const CITIES: Omit<CandidateCity, 'affinity'>[] = [
   ['nyc', 'New York, NY', 40.71, -74.01, 8336000], ['la', 'Los Angeles, CA', 34.05, -118.24, 3822000],

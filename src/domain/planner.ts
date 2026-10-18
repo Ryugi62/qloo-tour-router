@@ -1,5 +1,5 @@
 // UC-1: choose and order tour stops. Pure and deterministic.
-import { haversineKm, type LatLon } from './geo';
+import { haversineKm, type LatLon } from './geo.js';
 
 export interface Venue { readonly id: string; readonly name: string; readonly affinity: number }
 export interface CandidateCity extends LatLon {
