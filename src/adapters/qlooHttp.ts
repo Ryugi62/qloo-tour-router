@@ -3,7 +3,9 @@
 // key is issued (see SPEC §1 S2 — nothing is invented when the API returns no data).
 import type { TastePort } from '../application/routeTour.js';
 import type { Artist } from '../domain/pitch.js';
-import type { CandidateCity, Venue } from '../domain/planner.js';
+import type { CandidateCity, Opener, Venue } from '../domain/planner.js';
+import { parseDemographics, type AudienceProfile } from '../domain/audience.js';
+import { VENUE_RADIUS_M } from '../domain/constants.js';
 
 export type FetchLike = (url: string, init: { headers: Record<string, string> }) => Promise<{ ok: boolean; status: number; json(): Promise<any> }>;
 export const QLOO_BASE = 'https://hackathon.api.qloo.com';
@@ -52,7 +54,7 @@ export class QlooHttp implements TastePort {
   async searchArtist(name: string): Promise<Artist | null> {
     const j = await this.get('/search', { query: name, types: 'urn:entity:artist', take: 1 });
     const e = j?.results?.[0];
-    return e ? { id: e.entity_id, name: e.name } : null;
+    return e ? { id: e.entity_id, name: e.name, ...(typeof e.popularity === 'number' ? { popularity: e.popularity } : {}) } : null;
   }
 
   async rankCities(artist: Artist, take: number): Promise<CandidateCity[]> {
@@ -72,16 +74,23 @@ export class QlooHttp implements TastePort {
         affinity: typeof e?.query?.affinity === 'number' ? e.query.affinity : 0,
         population: typeof e?.properties?.population === 'number' ? e.properties.population : undefined,
         popularity: typeof e?.popularity === 'number' ? e.popularity : undefined,
+        ...(Array.isArray(e?.tags) && e.tags.length ? { tags: e.tags.map((t: any) => String(t?.name ?? '')).filter(Boolean) } : {}),
       }));
   }
 
-  async venuesNear(artist: Artist, city: CandidateCity, take: number): Promise<Venue[]> {
+  /** Artist-level audience index (age, gender) from insights filter.type=urn:demographics. Not city-specific. */
+  async audienceProfile(artist: Artist): Promise<AudienceProfile | null> {
+    const j = await this.get('/v2/insights', { 'filter.type': 'urn:demographics', 'signal.interests.entities': artist.id });
+    return parseDemographics(j?.results?.demographics?.[0]?.query);
+  }
+
+  async venuesNear(artist: Artist, city: CandidateCity, take: number, opts: { radiusM?: number; tag?: string } = {}): Promise<Venue[]> {
     const j = await this.get('/v2/insights', {
       'filter.type': 'urn:entity:place',
-      'filter.tags': 'urn:tag:genre:place:live_music_venue',
+      'filter.tags': opts.tag ?? 'urn:tag:genre:place:live_music_venue',
       'signal.interests.entities': artist.id,
       'filter.location': `POINT(${city.lon} ${city.lat})`,
-      'filter.location.radius': 15000,
+      'filter.location.radius': opts.radiusM ?? VENUE_RADIUS_M,
       take,
     });
     const ents: any[] = j?.results?.entities ?? [];
@@ -94,6 +103,14 @@ export class QlooHttp implements TastePort {
     }));
   }
 
+  private openerList(j: any, artist: Artist, take: number): Opener[] {
+    const ents: any[] = j?.results?.entities ?? [];
+    return ents
+      .filter((e) => e.entity_id !== artist.id)
+      .slice(0, take)
+      .map((e) => ({ id: e.entity_id, name: e.name, affinity: typeof e?.query?.affinity === 'number' ? e.query.affinity : 0, ...(typeof e?.popularity === 'number' ? { popularity: e.popularity } : {}) }));
+  }
+
   async openersNear(artist: Artist, city: CandidateCity, take: number) {
     const j = await this.get('/v2/insights', {
       'filter.type': 'urn:entity:artist',
@@ -101,10 +118,12 @@ export class QlooHttp implements TastePort {
       'signal.location': `POINT(${city.lon} ${city.lat})`,
       take: take + 1,
     });
-    const ents: any[] = j?.results?.entities ?? [];
-    return ents
-      .filter((e) => e.entity_id !== artist.id)
-      .slice(0, take)
-      .map((e) => ({ id: e.entity_id, name: e.name, affinity: typeof e?.query?.affinity === 'number' ? e.query.affinity : 0 }));
+    return this.openerList(j, artist, take);
+  }
+
+  /** Same query without a location signal: what the artist's fans like everywhere. An act that only shows up (or rises) with the city signal is local. */
+  async openersBaseline(artist: Artist, take: number) {
+    const j = await this.get('/v2/insights', { 'filter.type': 'urn:entity:artist', 'signal.interests.entities': artist.id, take: take + 1 });
+    return this.openerList(j, artist, take).map((o) => ({ id: o.id, affinity: o.affinity }));
   }
 }

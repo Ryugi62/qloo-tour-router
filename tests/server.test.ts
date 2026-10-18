@@ -16,7 +16,7 @@ describe('web adapter', () => {
     expect(portFromEnv({}).mode).toBe('sample');
     const j = await (await fetch(`${base}/api/plan?artist=folk&home=40.71,-74.01`)).json();
     expect(j.dataMode).toBe('sample');
-    expect(j.taste.stops).toHaveLength(8);
+    expect(j.taste.stops.filter((s: any) => !s.bridge)).toHaveLength(8);
   });
   it('AC-7 served HTML never contains the key value', async () => {
     const key = 'qk_test_SECRET_123';
@@ -47,7 +47,7 @@ describe('quality fields over HTTP and in the page', () => {
   });
   it('page leads with the changed-cities line and states Qloo gives no capacity', async () => {
     const html = await (await fetch(`${base}/`)).text();
-    expect(html).toContain('headline(L2.changed');
+    expect(html).toContain('headline(c, n)');
     expect(html).toContain('Qloo returns no capacity');
     expect(html.toLowerCase()).not.toMatch(/ticket sales will|sell out/);
   });

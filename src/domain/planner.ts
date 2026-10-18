@@ -27,7 +27,18 @@ export interface CandidateCity extends LatLon {
   readonly popularity?: number;
   readonly venues?: readonly Venue[];
   /** Artists whose fans overlap with this artist's, popular around this city (possible openers). */
-  readonly openers?: readonly { readonly id: string; readonly name: string; readonly affinity: number }[];
+  readonly openers?: readonly Opener[];
+  /** Qloo's own destination tags (e.g. "Foodie Destination"), shown as city character. */
+  readonly tags?: readonly string[];
+}
+export interface Opener {
+  readonly id: string;
+  readonly name: string;
+  readonly affinity: number;
+  /** Qloo popularity 0..1 (notoriety, not draw). */
+  readonly popularity?: number;
+  /** local = the location signal moved this act; region = it is a region-wide taste neighbour. */
+  readonly scope?: 'local' | 'region';
 }
 export interface TourRequest {
   readonly stops: number;
@@ -37,6 +48,8 @@ export interface TourRequest {
   readonly mustInclude?: readonly string[];
   /** Two stops closer than this are the same market (default MIN_CITY_SEPARATION_KM). */
   readonly minSeparationKm?: number;
+  /** Rank of each candidate id in the full taste ordering (so ranks stay stable when the pool shrinks). */
+  readonly ranks?: ReadonlyMap<string, number>;
 }
 export interface Stop {
   readonly city: CandidateCity;
@@ -82,7 +95,7 @@ function plan(allCands: readonly CandidateCity[], req: TourRequest, key: KeyFn, 
   const sameMarket = allCands.length - cands.length;
   if (sameMarket > 0) warnings.push(`${sameMarket} candidate cities skipped as the same market as a stronger pick (< ${sep} km apart)`);
   const sorted = [...allCands].sort((a, b) => b.affinity - a.affinity || a.id.localeCompare(b.id));
-  const rank = new Map(sorted.map((c, i) => [c.id, i + 1]));
+  const rank = new Map(sorted.map((c, i) => [c.id, req.ranks?.get(c.id) ?? i + 1]));
   const n = Math.min(req.stops, cands.length);
   if (cands.length < req.stops) warnings.push(`only ${cands.length} candidate cities for ${req.stops} stops${sameMarket > 0 ? ' after the same-market separation' : ''}`);
 

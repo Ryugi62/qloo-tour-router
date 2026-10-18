@@ -97,3 +97,22 @@ market), `VENUE_ESTABLISHED_POPULARITY = 0.9` (Qloo popularity, a notoriety sign
 보조 13~15px, 첫 줄 headline 20px 굵게. 4 여백: 4/8 배수, 좌우 16px. 5 터치 목표: 칩 버튼은 캡처로 확인. 6 숫자 먼저: 결과 첫 요소 = 「Qloo가
 바꾼 도시」 한 줄(바뀐 수·평균 순위). 7 근거는 접힘: 프로모터 메일은 `<details>`. 8 마이크로카피: 한계(용량 없음, 판매 예측 아님)를 숨기지 않고 한 줄로 쓴다.
 9 색·대비: 브랜드 파랑은 #1B64DA(흰 글자 5.41:1) 이하, 숫자 마커도 같은 색, 다크 대응 유지. 10 의존: 지도 타일 때문에 Leaflet CDN 1건 유지(지도 불가 시 문구 표시).
+
+## 11. Agentic self-check (v6, after independent mock review 2)
+Constants (single source `src/domain/constants.ts`): `TASTE_RANK_CAP = 20` (cities are chosen only from the taste top N), `SELF_CHECK_MAX_ROUNDS = 4`,
+`VENUE_RADIUS_M = 15000` → `VENUE_RADIUS_WIDE_M = 40000`, `VENUE_ALT_TAG = urn:tag:genre:place:concert_hall`, `OPENER_POPULARITY_MARGIN = 0.05`, `LOCAL_SIGNAL_MIN_DELTA = 0.02`.
+Purpose fit: this strengthens "picks taste-matched venues" and "evidence that changed each decision"; it predicts no ticket sales and adds no capacity numbers.
+- S14 Plan → self-check → re-query loop (≤ `SELF_CHECK_MAX_ROUNDS`): after each plan the checks are (a) every stop has a confirmed concert room, (b) openers sit below the headliner in
+  Qloo popularity, (c) every drive ≤ maxLegKm, (d) every stop is inside the taste top N. A failed room check changes the condition, one rung per round:
+  wider radius → other venue tag → drop the city and fill from the next taste-ranked city. A city with only unconfirmed rooms keeps them labelled "unverified". If rounds run out
+  the route shrinks (never keeps a stop without any room) and `unfilled[]` says why.
+- S15 Decision trace: every re-query, drop and kept-with-reason is a `trace[]` entry (round, city, check, finding, action, outcome); the screen folds it; MCP returns it.
+- S16 A stop below the top `stops` ranks carries a one-line `rankNote` naming the higher-ranked cities that were unusable and why. User `must_include` overrides the cap and is labelled.
+- S17 Openers: only acts whose Qloo popularity ≤ headliner − margin (unknown popularity passes, labelled by absence). "local" only when the act is absent from, or rose ≥ delta over, the
+  no-location baseline query; otherwise "region-wide". A failed baseline call is `degraded` and nothing is called local.
+- S18 Qloo depth: artist audience index from insights `filter.type=urn:demographics` (age and gender index; artist-level, **not** city-specific, verified live: identical for three cities),
+  destination `tags` as city character, venue/opener popularity. Nothing is shown that the API did not return.
+- S19 Screen: card = one folded summary line (city · room · why it changed); main numbers are "cities changed n/8" and "avg taste rank swapped-in vs replaced"; affinity differences
+  of a few hundredths are not headline numbers. MCP: `plan_tour` (plan + degraded + rooms + openers + trace) and `explain_stop` (one stop, its trace and email).
+- AC-15 room-less city dropped and refilled · AC-16 radius rescue · AC-17 tag rescue · AC-18 shrink with reason, bounded calls · AC-19 rank cap and rank note · AC-20 opener band and local
+  signal · AC-21 MCP trace/explain_stop · AC-22 demographics mapping (tests/agentic.test.ts).

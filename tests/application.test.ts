@@ -7,7 +7,7 @@ describe('application routeTour', () => {
   it('sample mode returns a complete, labelled result', async () => {
     const r = await routeTour(new SampleTaste(), { artistName: 'folk', home: { lat: 40.7, lon: -74 } });
     expect(r.dataMode).toBe('sample');
-    expect(r.taste.stops).toHaveLength(8);
+    expect(r.taste.stops.filter((s) => !s.bridge)).toHaveLength(8);
     expect(r.taste.stops.every((s) => (s.city.venues?.length ?? 0) === 3)).toBe(true);
     expect(r.pitch).toContain(r.artist.name);
     expect(r.lift.meanAffinityTaste).toBeGreaterThanOrEqual(r.lift.meanAffinityGeneric);

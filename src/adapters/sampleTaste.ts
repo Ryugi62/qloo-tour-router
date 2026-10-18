@@ -14,6 +14,8 @@ const CITIES: Omit<CandidateCity, 'affinity'>[] = [
   ['atl', 'Atlanta, GA', 33.75, -84.39, 499000], ['sf', 'San Francisco, CA', 37.77, -122.42, 808000],
   ['bos', 'Boston, MA', 42.36, -71.06, 650000], ['msp', 'Minneapolis, MN', 44.98, -93.27, 425000],
   ['nola', 'New Orleans, LA', 29.95, -90.07, 364000], ['slc', 'Salt Lake City, UT', 40.76, -111.89, 200000],
+  ['kc', 'Kansas City, MO', 39.1, -94.58, 508000], ['stl', 'St. Louis, MO', 38.63, -90.2, 301000], ['det', 'Detroit, MI', 42.33, -83.05, 639000],
+  ['cmh', 'Columbus, OH', 39.96, -83.0, 906000], ['clt', 'Charlotte, NC', 35.23, -80.84, 874000], ['pit', 'Pittsburgh, PA', 40.44, -80.0, 303000],
   ['ash', 'Asheville, NC', 35.6, -82.55, 94000], ['ath', 'Athens, GA', 33.96, -83.38, 128000],
   ['mad', 'Madison, WI', 43.07, -89.4, 272000], ['boi', 'Boise, ID', 43.62, -116.2, 237000],
   ['tuc', 'Tucson, AZ', 32.22, -110.97, 546000], ['rva', 'Richmond, VA', 37.54, -77.44, 229000],

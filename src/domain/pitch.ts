@@ -1,7 +1,7 @@
 // UC-3: pitch drafted only from evidence in the plan (no invented numbers, no sales claims).
 import type { CandidateCity, TourPlan, Venue } from './planner.js';
 
-export interface Artist { readonly id: string; readonly name: string }
+export interface Artist { readonly id: string; readonly name: string; /** Qloo popularity 0..1 (headliner weight class for opener selection). */ readonly popularity?: number }
 /** Venues below this affinity are not presented as a fit (mock round 1: 0.31 was called "fits"). */
 export const VENUE_FIT_MIN = 0.5;
 
@@ -28,12 +28,13 @@ export function draftCityPitch(artist: Artist, plan: TourPlan, cityId: string): 
   ].filter((l) => l !== ``).join('\n');
 }
 
-export function draftPitch(artist: Artist, plan: TourPlan): string {
+export function draftPitch(artist: Artist, plan: TourPlan, audienceLine?: string): string {
   const top = [...plan.stops].sort((a, b) => a.affinityRank - b.affinityRank).slice(0, 3);
   return [
     `${artist.name} — ${plan.stops.length}-city routing (${Math.round(plan.totalKm)} km).`,
     `Route: ${plan.stops.map((s) => `${s.city.name.split(',')[0]} (#${s.affinityRank})`).join(' → ')}.`,
     `Strongest audience markets on this run: ${top.map((s) => `${s.city.name} (#${s.affinityRank}, affinity ${s.affinity.toFixed(2)})`).join('; ')}.`,
+    ...(audienceLine ? [audienceLine] : []),
     `Affinity measures audience taste overlap, not a sales forecast.`,
   ].join('\n');
 }
