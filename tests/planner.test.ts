@@ -93,7 +93,7 @@ describe('UC-3 draftPitch (AC-5)', () => {
 describe('selection quality', () => {
   it('when every city is within reach, picks exactly the top-N by affinity', () => {
     const dense = cities.map((c, i) => ({ ...c, lat: 40 + (i % 5) * 0.3, lon: -75 + Math.floor(i / 5) * 0.3 }));
-    const p = planTour(dense, { ...req, home: { lat: 40, lon: -75 } });
+    const p = planTour(dense, { ...req, home: { lat: 40, lon: -75 }, minSeparationKm: 0 });
     const top = [...dense].sort((a, b) => b.affinity - a.affinity).slice(0, 8).map((c) => c.id).sort();
     expect(p.stops.map((s) => s.city.id).sort()).toEqual(top);
   });
@@ -109,7 +109,7 @@ describe('feasibility and follow-ups (mock round 1 Q-1/Q-2)', () => {
     // Two clusters far apart; the top cities are split, but 8 strong cities exist inside the east cluster.
     const east = Array.from({ length: 10 }, (_, i) => ({ id: `e${i}`, name: `East ${i}`, lat: 40 + (i % 3), lon: -75 + Math.floor(i / 3), affinity: 0.7 + i * 0.01 }));
     const west = Array.from({ length: 3 }, (_, i) => ({ id: `w${i}`, name: `West ${i}`, lat: 37, lon: -122 + i, affinity: 0.85 + i * 0.01 }));
-    const p = planTour([...east, ...west], { stops: 8, maxLegKm: 650, home: { lat: 40.7, lon: -74 } });
+    const p = planTour([...east, ...west], { stops: 8, maxLegKm: 650, home: { lat: 40.7, lon: -74 }, minSeparationKm: 0 });
     expect(p.warnings).toEqual([]);
     expect(p.legs.every((l) => l.km <= 650)).toBe(true);
   });

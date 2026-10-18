@@ -1,7 +1,21 @@
 // UC-1: choose and order tour stops. Pure and deterministic.
 import { haversineKm, type LatLon } from './geo.js';
+import { MIN_CITY_SEPARATION_KM } from './constants.js';
 
-export interface Venue { readonly id: string; readonly name: string; readonly affinity: number }
+export type VenueKind = 'venue' | 'unverified';
+export type VenueSize = 'established' | 'smaller' | 'unknown';
+export interface Venue {
+  readonly id: string;
+  readonly name: string;
+  readonly affinity: number;
+  /** Qloo popularity 0..1: a notoriety signal, not a capacity. */
+  readonly popularity?: number;
+  /** Qloo tag ids as returned (urn:tag:...). */
+  readonly tags?: readonly string[];
+  /** Set by the application after classification (domain/venue.ts). */
+  readonly kind?: VenueKind;
+  readonly size?: VenueSize;
+}
 export interface CandidateCity extends LatLon {
   readonly id: string;
   readonly name: string;
@@ -21,6 +35,8 @@ export interface TourRequest {
   readonly home: LatLon;
   /** City ids that must be on the route (agent follow-ups like "keep Austin in"). */
   readonly mustInclude?: readonly string[];
+  /** Two stops closer than this are the same market (default MIN_CITY_SEPARATION_KM). */
+  readonly minSeparationKm?: number;
 }
 export interface Stop {
   readonly city: CandidateCity;
@@ -51,12 +67,24 @@ export const planTour = (cands: readonly CandidateCity[], req: TourRequest): Tou
 export const planGeneric = (cands: readonly CandidateCity[], req: TourRequest): TourPlan =>
   plan(cands, req, byMarket, 'generic');
 
-function plan(cands: readonly CandidateCity[], req: TourRequest, key: KeyFn, basis: TourPlan['basis']): TourPlan {
+/** Keep the best-keyed city of every market: a city within `sep` km of an already kept one is dropped (must-includes first). */
+function dedupeMarkets(cands: readonly CandidateCity[], key: KeyFn, must: readonly string[], sep: number): CandidateCity[] {
+  const order = [...cands].sort((a, b) => Number(must.includes(b.id)) - Number(must.includes(a.id)) || key(b, cands) - key(a, cands) || a.id.localeCompare(b.id));
+  const kept: CandidateCity[] = [];
+  for (const c of order) if (kept.every((k) => haversineKm(k, c) >= sep)) kept.push(c);
+  return kept;
+}
+
+function plan(allCands: readonly CandidateCity[], req: TourRequest, key: KeyFn, basis: TourPlan['basis']): TourPlan {
   const warnings: string[] = [];
-  const sorted = [...cands].sort((a, b) => b.affinity - a.affinity || a.id.localeCompare(b.id));
+  const sep = req.minSeparationKm ?? MIN_CITY_SEPARATION_KM;
+  const cands = dedupeMarkets(allCands, key, req.mustInclude ?? [], sep);
+  const sameMarket = allCands.length - cands.length;
+  if (sameMarket > 0) warnings.push(`${sameMarket} candidate cities skipped as the same market as a stronger pick (< ${sep} km apart)`);
+  const sorted = [...allCands].sort((a, b) => b.affinity - a.affinity || a.id.localeCompare(b.id));
   const rank = new Map(sorted.map((c, i) => [c.id, i + 1]));
   const n = Math.min(req.stops, cands.length);
-  if (cands.length < req.stops) warnings.push(`only ${cands.length} candidate cities for ${req.stops} stops`);
+  if (cands.length < req.stops) warnings.push(`only ${cands.length} candidate cities for ${req.stops} stops${sameMarket > 0 ? ' after the same-market separation' : ''}`);
 
   const must = cands.filter((c) => req.mustInclude?.includes(c.id));
   for (const id of req.mustInclude ?? []) if (!must.some((c) => c.id === id)) warnings.push(`must-include city ${id} is not among candidates`);
@@ -119,7 +147,7 @@ function plan(cands: readonly CandidateCity[], req: TourRequest, key: KeyFn, bas
     if (best.viol === 0) break;
   }
   let order = best ? best.order : [];
-  const bridged = insertBridges(order, cands, req.maxLegKm);
+  const bridged = insertBridges(order, cands, req.maxLegKm, sep);
   order = bridged.order;
   const bridges = bridged.bridges;
 
@@ -168,7 +196,7 @@ function twoOpt(p: CandidateCity[]): CandidateCity[] {
 }
 
 /** Split any drive longer than maxLegKm through the unused candidate that makes both halves fit. */
-export function insertBridges(route: readonly CandidateCity[], cands: readonly CandidateCity[], maxLegKm: number) {
+export function insertBridges(route: readonly CandidateCity[], cands: readonly CandidateCity[], maxLegKm: number, sepKm = MIN_CITY_SEPARATION_KM) {
   let order = [...route];
   const bridges = new Set<string>();
   for (let i = 1; i < order.length; i++) {
@@ -178,7 +206,7 @@ export function insertBridges(route: readonly CandidateCity[], cands: readonly C
     let pick: CandidateCity | null = null;
     let worst = Infinity;
     for (const c of cands) {
-      if (order.includes(c)) continue;
+      if (order.includes(c) || order.some((o) => haversineKm(o, c) < sepKm)) continue;
       const m = Math.max(haversineKm(a, c), haversineKm(c, b));
       if (m <= maxLegKm && (m < worst || (m === worst && pick && c.id < pick.id))) { pick = c; worst = m; }
     }

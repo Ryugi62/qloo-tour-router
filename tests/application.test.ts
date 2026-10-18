@@ -122,3 +122,12 @@ describe('Qloo quota discipline (5 req/s, 10k/month)', () => {
     expect(n).toBe(1);
   });
 });
+
+describe('adapter: venue tags and popularity reach the domain', () => {
+  it('maps tag ids and popularity from the Qloo entity', async () => {
+    const fake: FetchLike = async () => ({ ok: true, status: 200, json: async () => ({ results: { entities: [{ entity_id: 'V1', name: 'Hall', popularity: 0.97, query: { affinity: 0.8 }, tags: [{ id: 'urn:tag:genre:place:concert_hall', name: 'x' }] }] } }) });
+    const q = new QlooHttp('K', fake, { minGapMs: 0 });
+    const v = await q.venuesNear({ id: 'A', name: 'B' }, { id: 'C', name: 'C', lat: 1, lon: 2, affinity: 0.5 }, 10);
+    expect(v).toEqual([{ id: 'V1', name: 'Hall', affinity: 0.8, popularity: 0.97, tags: ['urn:tag:genre:place:concert_hall'] }]);
+  });
+});

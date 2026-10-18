@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  :root { --bg:#fafaf7; --ink:#191f28; --sub:#6b7684; --line:#e5e8eb; --accent:#3182f6; --gen:#b0b8c1; --card:#fff; }
+  :root { --bg:#fafaf7; --ink:#191f28; --sub:#5b6573; --line:#e5e8eb; --accent:#1b64da; --gen:#b0b8c1; --card:#fff; }
   @media (prefers-color-scheme: dark) { :root { --bg:#17171c; --ink:#f2f4f6; --sub:#9ea7b3; --line:#2c2f36; --card:#202027; --gen:#5c6370; } }
   * { box-sizing: border-box; }
   body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
@@ -19,7 +19,12 @@
   .badge { display:inline-block; font-size:13px; padding:2px 10px; border-radius:99px; background:#fff3d6; color:#7a5200; }
   .grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:16px; } @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
   .card { background: var(--card); border:1px solid var(--line); border-radius: 16px; padding: 16px; }
-  #map { height: 600px; border-radius: 12px; } .legend { display:flex; gap:16px; font-size:14px; color:var(--sub); }
+  #map { height: 440px; border-radius: 12px; }
+  .head { margin-bottom: 16px; } .head .big { font-size: 20px; font-weight: 700; margin: 0 0 4px; } .head .note { margin: 0; }
+  .num { background:#1b64da; color:#fff; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font:600 13px system-ui; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.35); }
+  .gdot { background:#8b95a1; width:10px; height:10px; border-radius:50%; border:2px solid #fff; }
+  table.cmp { width:100%; border-collapse:collapse; font-size:14px; margin-top:12px; } table.cmp th, table.cmp td { text-align:left; padding:6px 4px; border-top:1px solid var(--line); } table.cmp th { color:var(--sub); font-weight:500; border-top:0; }
+  .warnb { background:#fff3d6; color:#7a5200; border-radius:12px; padding:8px 12px; font-size:14px; margin-bottom:12px; } .legend { display:flex; gap:16px; font-size:14px; color:var(--sub); }
   .kpis { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
   .kpi b { display:block; font-size: 22px; } .kpi span { color: var(--sub); font-size: 13px; }
   ol { padding-left: 20px; margin: 0; } li { margin: 6px 0; } .muted { color: var(--sub); font-size: 14px; }
@@ -34,8 +39,8 @@
   <h1>Tour Router</h1>
   <p class="sub">For small booking agencies: route an artist where their audience's taste actually is — and see what changed versus a generic big-market plan.</p>
   <form id="f">
-    <input id="artist" placeholder="Artist name, e.g. Phoebe Bridgers" required />
-    <select id="home"><option value="40.71,-74.01">Start: New York</option><option value="34.05,-118.24">Start: Los Angeles</option><option value="41.88,-87.63">Start: Chicago</option><option value="30.27,-97.74">Start: Austin</option></select>
+    <input id="artist" aria-label="Artist name" placeholder="Artist name, e.g. Phoebe Bridgers" required />
+    <select id="home" aria-label="Start city"><option value="40.71,-74.01">Start: New York</option><option value="34.05,-118.24">Start: Los Angeles</option><option value="41.88,-87.63">Start: Chicago</option><option value="30.27,-97.74">Start: Austin</option></select>
     <button>Plan tour</button>
   </form>
   <p class="why">Streaming dashboards tell you where people already play the track. Qloo's taste graph tells you where people who share this audience's wider taste — music, film, dining, places — are concentrated, including cities the artist hasn't reached yet.</p>
@@ -64,13 +69,31 @@ function drawMap(taste, generic) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(leaflet);
     const ll = (p) => p.stops.map((s) => [s.city.lat, s.city.lon]);
     L.polyline(ll(generic), { color: '#8b95a1', dashArray: '6 8', weight: 2 }).addTo(leaflet);
-    generic.stops.forEach((s) => L.circleMarker([s.city.lat, s.city.lon], { radius: 4, color: '#8b95a1' }).bindTooltip(s.city.name.split(',')[0]).addTo(leaflet));
-    const line = L.polyline(ll(taste), { color: '#3182f6', weight: 4 }).addTo(leaflet);
-    taste.stops.forEach((s, i) => L.circleMarker([s.city.lat, s.city.lon], { radius: 8, color: '#3182f6', fillOpacity: 1 }).bindTooltip(`${i + 1}. ${s.city.name.split(',')[0]}`, { permanent: true, direction: 'right' }).addTo(leaflet));
-    leaflet.fitBounds(L.latLngBounds([...ll(taste), ...ll(generic)]).pad(0.15));
+    const tasteIds = new Set(taste.stops.map((s) => s.city.id));
+    generic.stops.filter((s) => !tasteIds.has(s.city.id)).forEach((s) => L.marker([s.city.lat, s.city.lon], { icon: L.divIcon({ className: '', html: '<div class="gdot"></div>', iconSize: [10, 10] }) }).bindTooltip(`${s.city.name} (generic only)`).addTo(leaflet));
+    L.polyline(ll(taste), { color: '#3182f6', weight: 4 }).addTo(leaflet);
+    taste.stops.forEach((s, i) => L.marker([s.city.lat, s.city.lon], { icon: L.divIcon({ className: '', html: `<div class="num">${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).bindTooltip(`${i + 1}. ${s.city.name}`).addTo(leaflet));
+    leaflet.fitBounds(L.latLngBounds([...ll(taste), ...ll(generic)]).pad(0.1));
   }, 0);
-  return '<div id="map"></div><div class="legend"><span>━ Taste-based route</span><span>┅ Generic big-market route</span></div>';
+  return '<div id="map"></div><div class="legend"><span>● Numbered = taste route (list at right)</span><span>┅ Generic big-market route</span><span>● grey = generic-only city</span></div>';
 }
+const f2 = (x) => (x === null || x === undefined ? '—' : x.toFixed(2));
+function headline(c, n) {
+  if (!c.count) return `<p class="big">Taste data and the generic market plan chose the same ${n} cities for this artist.</p><p class="muted note">Qloo confirmed the generic plan rather than changing it. The venue and opener evidence below is still taste-matched.</p>`;
+  const d = c.affinityDelta;
+  return `<p class="big">Qloo changed ${c.count} of ${n} cities: the swapped-in cities sit at avg rank #${c.tasteMeanRank.toFixed(1)} for this audience, the ones they replaced at #${c.genericMeanRank.toFixed(1)}.</p>
+    <p class="muted note">Only the changed cities compared: avg affinity ${f2(c.tasteMeanAffinity)} vs ${f2(c.genericMeanAffinity)} (${d >= 0 ? '+' : ''}${d.toFixed(2)}). Affinity is audience taste overlap, not a sales forecast.</p>`;
+}
+function changedTable(c) {
+  if (!c.count) return '';
+  const rows = (a) => a.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.affinity.toFixed(2)}</td><td>#${x.rank}</td></tr>`).join('');
+  return `<table class="cmp"><tr><th>Added by taste data</th><th>Affinity</th><th>Rank</th></tr>${rows(c.tasteOnly)}<tr><th>Replaced (generic pick)</th><th>Affinity</th><th>Rank</th></tr>${rows(c.genericOnly)}</table>`;
+}
+const venueLine = (s) => {
+  const vs = (s.city.venues || []).filter((v) => v.affinity >= 0.5).slice(0, 2);
+  if (!vs.length) return 'No qualifying room found within 15 km (cafes, restaurants and schools are filtered out)';
+  return vs.map((v) => `${v.name} ${v.affinity.toFixed(2)}${v.kind === 'unverified' ? ' · room type unverified' : v.size === 'established' ? ' · established room' : v.size === 'smaller' ? ' · smaller room' : ' · size unverified'}`).join(' · ');
+};
 async function plan() {
   $('#out').innerHTML = '<p class="muted">Planning…</p>';
   const q = new URLSearchParams({ artist: $('#artist').value, home: $('#home').value, exclude: excluded.join(','), must: kept.join(',') });
@@ -78,17 +101,22 @@ async function plan() {
   const j = await r.json();
   if (!r.ok) { $('#out').innerHTML = `<p>${esc(j.error)}</p>`; return; }
   const L2 = j.lift;
-  $('#out').innerHTML = `<div class="grid"><div class="card">${drawMap(j.taste, j.generic)}</div><div class="card">
-    <div class="kpis"><div class="kpi"><b>${L2.meanAffinityTaste.toFixed(2)}</b><span>avg audience affinity (taste)</span></div>
-    <div class="kpi"><b>${L2.meanAffinityGeneric.toFixed(2)}</b><span>avg affinity (generic)</span></div>
-    <div class="kpi"><b>${Math.round((1 - L2.jaccard) * 100)}%</b><span>of cities changed</span></div></div>
-    <p class="muted">Taste added: ${esc(L2.added.join(', ') || '—')}<br/>Taste dropped: ${esc(L2.dropped.join(', ') || '—')}</p>
-    ${j.taste.warnings.length ? `<p class="muted">⚠ ${esc(j.taste.warnings.join(' · '))}</p>` : `<p class="muted">✓ Every drive ≤ 650 km · ${Math.round(j.taste.totalKm)} km total</p>`}
+  const n = j.taste.stops.filter((x) => !x.bridge).length;
+  const notes = [...(j.taste.warnings || [])];
+  $('#out').innerHTML = `<div class="card head">${headline(L2.changed, n)}</div>
+    ${(j.degraded || []).length ? `<div class="warnb">Partial result, the route is complete but some lookups failed: ${esc(j.degraded.join(' · '))}</div>` : ''}
+    <div class="grid"><div class="card">${drawMap(j.taste, j.generic)}${changedTable(L2.changed)}</div><div class="card">
+    <div class="kpis"><div class="kpi"><b>${Math.round(j.taste.totalKm)} km</b><span>total drive</span></div>
+    <div class="kpi"><b>${Math.round((1 - L2.jaccard) * 100)}%</b><span>of cities differ from generic</span></div>
+    <div class="kpi"><b>${L2.meanAffinityTaste.toFixed(2)} / ${L2.meanAffinityGeneric.toFixed(2)}</b><span>avg affinity, whole route (taste / generic)</span></div></div>
+    ${notes.length ? `<p class="muted">⚠ ${esc(notes.join(' · '))}</p>` : `<p class="muted">✓ Every drive ≤ 650 km, no two stops in the same market (≥ 150 km apart)</p>`}
+    ${(j.regionWideOpeners || []).length ? `<p class="muted">Region-wide taste neighbours (returned for most stops, so not offered as local openers): ${esc(j.regionWideOpeners.slice(0, 5).join(', '))}</p>` : ''}
     <div>${j.taste.stops.map((s, i) => `<div class="stop"><b>${i + 1}. ${esc(s.city.name)}</b> <span class="muted">affinity ${s.affinity.toFixed(2)} · #${s.affinityRank} of checked markets</span>${s.bridge ? ' <span class="badge">drive-splitting stop</span>' : ''}
-      <div class="muted">${esc((s.city.venues || []).filter((v) => v.affinity >= 0.5).slice(0, 2).map((v) => `${v.name} ${v.affinity.toFixed(2)}`).join(' · ') || 'No strong room match yet')}</div>
-      ${(s.city.openers || []).length ? `<div class="muted">Possible openers (fan overlap): ${esc(s.city.openers.slice(0, 2).map((o) => o.name).join(', '))}</div>` : ''}
+      <div class="muted">${esc(venueLine(s))}</div>
+      ${(s.city.openers || []).length ? `<div class="muted">Local openers (fan overlap near this city): ${esc(s.city.openers.slice(0, 2).map((o) => o.name).join(', '))}</div>` : '<div class="muted">No city-specific opener found</div>'}
       <details style="margin-top:4px"><summary class="muted">Preview promoter email</summary><pre>${esc(j.cityPitches[s.city.id] || '')}</pre></details>
       <div class="row" style="margin-top:6px"><button class="chip" data-copy="${esc(s.city.id)}">Copy promoter email</button><button class="chip" data-drop="${esc(s.city.id)}">Drop city</button><button class="chip" data-keep="${esc(s.city.id)}">${kept.includes(s.city.id) ? 'Kept ✓' : 'Keep'}</button></div></div>`).join('')}</div>
+    <p class="muted">Room size bands use Qloo popularity (how well known a place is). Qloo returns no capacity, so none is shown.</p>
   </div></div><div class="card" style="margin-top:16px"><b>Routing summary</b><pre>${esc(j.pitch)}</pre></div>`;
   window._pitches = j.cityPitches;
   document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => { await navigator.clipboard?.writeText(window._pitches[b.dataset.copy]); b.textContent = 'Copied ✓'; }));

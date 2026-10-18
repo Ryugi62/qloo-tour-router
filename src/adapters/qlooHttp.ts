@@ -85,7 +85,13 @@ export class QlooHttp implements TastePort {
       take,
     });
     const ents: any[] = j?.results?.entities ?? [];
-    return ents.map((e) => ({ id: e.entity_id, name: e.name, affinity: typeof e?.query?.affinity === 'number' ? e.query.affinity : 0 }));
+    return ents.map((e) => ({
+      id: e.entity_id,
+      name: e.name,
+      affinity: typeof e?.query?.affinity === 'number' ? e.query.affinity : 0,
+      popularity: typeof e?.popularity === 'number' ? e.popularity : undefined,
+      tags: Array.isArray(e?.tags) ? e.tags.map((t: any) => String(t?.id ?? '')).filter(Boolean) : [],
+    }));
   }
 
   async openersNear(artist: Artist, city: CandidateCity, take: number) {

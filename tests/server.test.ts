@@ -37,3 +37,18 @@ describe('live-mode page', () => {
     expect(html).toContain("get('artist')");
   });
 });
+
+describe('quality fields over HTTP and in the page', () => {
+  it('plan JSON carries the changed-cities metric, degraded and region-wide notes', async () => {
+    const j = await (await fetch(`${base}/api/plan?artist=folk&home=40.71,-74.01`)).json();
+    expect(j.lift.changed).toHaveProperty('count');
+    expect(Array.isArray(j.degraded)).toBe(true);
+    expect(Array.isArray(j.regionWideOpeners)).toBe(true);
+  });
+  it('page leads with the changed-cities line and states Qloo gives no capacity', async () => {
+    const html = await (await fetch(`${base}/`)).text();
+    expect(html).toContain('headline(L2.changed');
+    expect(html).toContain('Qloo returns no capacity');
+    expect(html.toLowerCase()).not.toMatch(/ticket sales will|sell out/);
+  });
+});

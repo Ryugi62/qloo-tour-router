@@ -22,7 +22,7 @@ export function draftCityPitch(artist: Artist, plan: TourPlan, cityId: string): 
     ``,
     `Hi — I'm booking ${artist.name}'s ${plan.stops.length}-city run and ${s.city.name.split(',')[0]} is stop ${i + 1}.`,
     `Taste data puts this city at #${s.affinityRank} of the markets we checked for ${artist.name}'s audience (affinity ${s.affinity.toFixed(2)}).`,
-    v ? `${v.name} looks like the right room for that crowd (venue affinity ${v.affinity.toFixed(2)}).` : `We haven't found a room with a strong audience match yet — open to your suggestion.`,
+    v ? `${v.name} looks like the right room for that crowd (venue affinity ${v.affinity.toFixed(2)}${v.kind === 'unverified' ? '; Qloo does not confirm the room type or size' : ''}).` : `We haven't found a room with a strong audience match yet — open to your suggestion.`,
     acts.length ? `Local acts whose fans overlap: ${acts.join(', ')} — possible openers.` : ``,
     `Affinity measures audience taste overlap, not a sales forecast. Would a date in your calendar work?`,
   ].filter((l) => l !== ``).join('\n');
